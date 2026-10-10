@@ -10,7 +10,7 @@
 
 | 항목 | 내용 | 이 앱에 미치는 영향 |
 | --- | --- | --- |
-| **나이 제한** | Gemini API 추가 약관: 사용자는 만 18세 이상이어야 하며, 만 18세 미만이 대상이거나 이용할 가능성이 높은 앱·서비스에는 쓰면 안 됨 | 이 앱은 **교사 PC 전용, 교사만 조작** → 앱 사용자는 교사(성인)이고 학생은 앱을 직접 쓰지 않음. 이 전제를 지키기 위해 **학생 기기 접속 기능은 넣지 않음** |
+| **나이 제한** | Gemini API 추가 약관: 사용자는 만 18세 이상이어야 하며, 만 18세 미만이 대상이거나 이용할 가능성이 높은 앱·서비스에는 쓰면 안 됨 | 이 앱은 **교사 PC 전용, 교사만 조작** → 앱 사용자는 교사(성인). 단, 선택 기능인 **학생 PC 링크**는 학생이 직접 자막 화면을 쓰는 것이므로 학생이 미성년자면 켜지 않는 것을 권장 (기본값 꺼짐, 앱 안에 안내) |
 | **무료 등급 데이터 사용** | 무료(Unpaid) 등급의 입력·출력은 Google 제품 개선에 쓰일 수 있고 사람이 검토할 수 있음. 민감·개인정보 입력 자제 권고 | 학생 음성·발화가 학습 데이터로 쓰일 수 있음 → 학생에게 고지·동의, 또는 결제 연결(유료 등급은 개선에 사용 안 함) |
 | **용도** | AI Studio·Gemini API는 업무·전문 목적의 개발자용 | 교사가 수업 도구로 쓰는 건 업무 목적에 해당 |
 | **변동성** | 무료 한도·무료 모델 목록은 예고 없이 바뀜 (2026년 Pro 모델 무료 제외 보도 등) | 모델 ID를 설정값으로, 한도 초과(429) 처리 필수 |
@@ -209,12 +209,15 @@ export async function loadKey(): Promise<string | null> {
 ## 9. 기존 설계 대비 바뀌는 점
 - Speech Gateway 서버 → 이 모드에서는 Electron main 안의 `GeminiProvider` 로 대체
 - 키 관리: "서버만 키 보관" 원칙 → BYOK 모드에서는 **교사 본인 키를 교사 PC의 OS 암호화 저장소에** 보관 (개발자 키를 배포물에 넣는 것은 여전히 금지)
-- 추가 파일 (예정)
+- 구현: [`apps/desktop`](../apps/desktop/README.md) (사용법은 [TEACHER_GUIDE.md](TEACHER_GUIDE.md))
   ```
-  apps/desktop/src/main/providers/gemini.ts   # 받아쓰기+번역 요청
-  apps/desktop/src/main/quota.ts              # 일일/분당 사용량, 429 처리, 적응형 묶기
+  apps/desktop/src/main/providers/gemini.ts   # 받아쓰기+언어 판별+번역 (한 요청)
+  apps/desktop/src/main/providers/claude.ts   # (선택) Claude 번역
+  apps/desktop/src/main/pipeline.ts           # 대기열·구간 합치기·429/일일 한도 처리·대체 모델
+  apps/desktop/src/main/quota.ts              # 모델별 일일 사용량, 분당 간격
   apps/desktop/src/main/keystore.ts           # safeStorage 키 보관
-  apps/desktop/src/renderer/vad.ts            # VAD + 구간 묶기 + WAV 인코딩
+  apps/desktop/src/main/lan/server.ts         # (선택) 학생 PC 링크 (HTTP + SSE)
+  apps/desktop/src/renderer/audio/            # AudioWorklet 캡처 + 16kHz + VAD·구간 묶기
   ```
 
 ---

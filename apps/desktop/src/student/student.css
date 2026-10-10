@@ -1,0 +1,45 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #15171a;
+  --muted: #5d6470;
+  --accent: #2457d6;
+  --student: #8a4b00;
+  --border: #dde1e7;
+  --ok: #1f9d55;
+  --bad: #c0392b;
+  --size: 28px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111317;
+    --surface: #1b1e24;
+    --text: #eef1f5;
+    --muted: #a3abb8;
+    --accent: #8fb0ff;
+    --student: #ffc070;
+    --border: #2c313a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: "Malgun Gothic", "Noto Sans", system-ui, sans-serif; }
+.bar {
+  position: sticky; top: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border); z-index: 1;
+}
+.lang { display: flex; align-items: center; gap: 6px; font-size: 18px; }
+select, button { font: inherit; font-size: 18px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+button { cursor: pointer; min-width: 48px; }
+.tools { display: flex; align-items: center; gap: 8px; }
+.toggle { display: flex; align-items: center; gap: 4px; font-size: 16px; color: var(--muted); }
+.conn { font-size: 18px; color: var(--bad); }
+.conn.ok { color: var(--ok); }
+main { padding: 16px; max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.cap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; }
+.cap .main { font-size: var(--size); line-height: 1.45; overflow-wrap: anywhere; }
+.cap .sub { margin-top: 6px; font-size: calc(var(--size) * 0.6); color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.cap.student { border-left: 6px solid var(--student); }
+.cap.student .who { font-size: 14px; color: var(--student); margin-bottom: 4px; }
+.cap.teacher { border-left: 6px solid var(--accent); }
+.empty { text-align: center; color: var(--muted); padding: 40px 16px; font-size: 18px; }
+.hidden { display: none; }

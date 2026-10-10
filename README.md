@@ -2,8 +2,10 @@
 
 교사가 한국어로 설명하면 **다른 창들 위에 떠 있는 자막**으로 한국어 원문과 학생 언어 번역이 나타나고,
 외국어를 쓰는 학생이 말하면 **언어를 자동 인식**해서 한국어로 통역해 보여주는 데스크톱 앱입니다.
-**교사 PC 전용**이며 교사만 조작합니다 (학생 기기 접속 기능 없음).
+**교사 PC(Windows) 전용**이며 교사만 조작합니다. 학생 PC 는 선택 기능인 링크로 자막만 볼 수 있습니다.
 
+- **사용 안내(교사용)**: [docs/TEACHER_GUIDE.md](docs/TEACHER_GUIDE.md)
+- 앱 코드: [apps/desktop](apps/desktop/README.md) — Windows 설치 파일은 GitHub Actions `Windows 설치 파일 만들기`
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)
 - 데이터 조사 도구: [AIHub-MCP](https://github.com/aihub-git/AIHub-MCP) — AI 허브 **데이터셋 메타데이터** 조회용 MCP 서버
@@ -11,13 +13,14 @@
 
 ## 구성 요약
 
-| 구성요소 | 역할 |
-| --- | --- |
-| `apps/desktop` (Electron) | 항상 위·투명·클릭 통과 자막 오버레이 + 교사용 컨트롤 패널 |
-| `services/speech-gateway` (FastAPI) | VAD → 언어 식별 → STT → 번역, **API 키는 여기에만 보관** |
-| `tools/aihub-mcp`, `tools/data-pipeline` | AIHub MCP로 데이터 조사 → 평가셋·교과 용어집·미세조정 |
+| 구성요소 | 상태 | 역할 |
+| --- | --- | --- |
+| `apps/desktop` (Electron) | ✅ MVP | 자막 오버레이(항상 위·투명·클릭 통과) + 컨트롤 패널 + Gemini 무료 받아쓰기·번역 + (선택) Claude 번역 + (선택) 학생 PC 링크 |
+| `services/speech-gateway` | 예정 (선택) | 로컬 Whisper 등 음성을 밖으로 보내지 않는 모드용 사이드카 |
+| `tools/aihub-mcp`, `tools/data-pipeline` | 예정 | AIHub MCP로 데이터 조사 → 평가셋·교과 용어집·미세조정 |
 
 ## API 키
 
-`.env.example`을 복사해 `.env`를 만들고 값을 채웁니다. `.env`는 커밋하지 않습니다.
-`AIHUB_API_KEY`는 개발·데이터 파이프라인 전용이며 앱 배포물에 넣지 않습니다.
+- **Gemini·Claude 키**: 선생님이 앱 설정 화면에 직접 넣습니다. 교사 PC 의 Windows 암호화 저장소(DPAPI)에만 저장되고, 저장소나 설치 파일에는 들어가지 않습니다.
+- **개발용 키**: `.env.example`을 복사해 `.env`를 만들고 값을 채웁니다. `.env`는 커밋하지 않습니다.
+  `AIHUB_API_KEY`는 개발·데이터 파이프라인 전용이며 앱 배포물에 넣지 않습니다.

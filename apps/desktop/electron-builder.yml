@@ -1,0 +1,22 @@
+appId: kr.translatorinclass.interpreter
+productName: ClassroomInterpreter
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ClassroomInterpreter-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  # 관리자 권한 없이 교사 계정에만 설치 (학교 PC 대응)
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: 교실 통역
+  installerLanguages: [ko_KR]
+  language: "1042"

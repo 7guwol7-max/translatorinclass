@@ -1,0 +1,29 @@
+{
+  "name": "classroom-interpreter",
+  "productName": "ClassroomInterpreter",
+  "version": "0.1.0",
+  "description": "교실 실시간 통역 자막 오버레이 (교사 PC용)",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "translatorinclass",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dist:win": "node scripts/build.mjs && electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "@google/genai": "^2.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

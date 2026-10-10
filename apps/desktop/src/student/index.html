@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>수업 자막 · Class captions</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="student.css">
+</head>
+<body>
+  <header class="bar">
+    <label class="lang">
+      <span aria-hidden="true">🌐</span>
+      <select id="language" aria-label="Language / 언어"></select>
+    </label>
+    <div class="tools">
+      <button id="smaller" type="button" aria-label="Smaller text">A−</button>
+      <button id="bigger" type="button" aria-label="Bigger text">A+</button>
+      <label class="toggle"><input id="showKorean" type="checkbox" checked> 한국어</label>
+      <span id="conn" class="conn" title="connection">●</span>
+    </div>
+  </header>
+  <main id="captions" aria-live="polite"></main>
+  <p id="empty" class="empty">선생님이 말하면 여기에 자막이 나와요.<br>Captions will appear here when your teacher speaks.</p>
+  <script src="student.js"></script>
+</body>
+</html>
