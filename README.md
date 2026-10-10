@@ -2,6 +2,7 @@
 
 교사가 한국어로 설명하면 **다른 창들 위에 떠 있는 자막**으로 한국어 원문과 학생 언어 번역이 나타나고,
 외국어를 쓰는 학생이 말하면 **언어를 자동 인식**해서 한국어로 통역해 보여주는 데스크톱 앱입니다.
+**교사 PC 전용**이며 교사만 조작합니다 (학생 기기 접속 기능 없음).
 
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)
