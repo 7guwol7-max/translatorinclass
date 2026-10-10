@@ -12,7 +12,8 @@
     "start": "node scripts/build.mjs && electron .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "dist:win": "node scripts/build.mjs && electron-builder --win nsis --x64 --publish never"
+    "dist:win": "node scripts/build.mjs && electron-builder --win --x64 --publish never",
+    "dist:win-zip": "node scripts/build.mjs && electron-builder --win zip --x64 --publish never"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

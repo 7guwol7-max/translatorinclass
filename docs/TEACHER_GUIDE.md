@@ -12,10 +12,10 @@
 
 ## 1. 설치
 1. 저장소의 **Actions → "Windows 설치 파일 만들기"** 에서 가장 최근 실행을 열고,
-   아래 **Artifacts** 의 `ClassroomInterpreter-Setup` 을 내려받아 압축을 풉니다.
-2. `ClassroomInterpreter-Setup-0.1.0.exe` 실행 → 설치 (관리자 권한 없이 선생님 계정에만 설치됨)
-3. 코드 서명이 없어 **"Windows의 PC 보호"** 창이 뜨면 **추가 정보 → 실행** 을 누릅니다.
-4. 바탕화면의 **교실 통역** 아이콘으로 실행합니다.
+   아래 **Artifacts** 의 `ClassroomInterpreter-Windows` 를 내려받아 압축을 풉니다. 두 가지 중 하나를 씁니다.
+   - **설치판** `ClassroomInterpreter-Setup-0.1.0.exe` → 실행해서 설치 (관리자 권한 없이 선생님 계정에만 설치) → 바탕화면 **교실 통역** 아이콘
+   - **설치 없는 판** `ClassroomInterpreter-0.1.0-win-x64-portable.zip` → 원하는 폴더에 압축 풀기 → `ClassroomInterpreter.exe` 실행
+2. 코드 서명이 없어 **"Windows의 PC 보호"** 창이 뜨면 **추가 정보 → 실행** 을 누릅니다.
 
 ## 2. Gemini 무료 키 받기 (약 5분)
 1. [Google AI Studio](https://aistudio.google.com/apikey) 에 Google 계정으로 로그인 → **API 키 만들기** → 키 복사 (카드 등록 불필요)

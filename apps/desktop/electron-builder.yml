@@ -10,8 +10,12 @@ win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: ClassroomInterpreter-Setup-${version}.${ext}
+    # 설치 없이 압축만 풀어 쓰는 버전
+    - target: zip
+      arch: [x64]
+  artifactName: ClassroomInterpreter-${version}-win-x64-portable.${ext}
 nsis:
+  artifactName: ClassroomInterpreter-Setup-${version}.${ext}
   oneClick: false
   # 관리자 권한 없이 교사 계정에만 설치 (학교 PC 대응)
   perMachine: false
