@@ -174,9 +174,12 @@ PCM 16kHz mono (20ms 프레임)
 | STT + 언어식별 | 로컬 Whisper (faster-whisper) | 99개 언어 식별 내장, 음성이 교실 밖으로 안 나감 | GPU 권장, 실시간성 튜닝 필요 |
 | 번역 | Papago, DeepL, Google 번역 | 빠르고 저렴 | **엔진마다 지원 언어가 다름** (우즈베크어·몽골어·크메르어 등 반드시 확인) |
 | 번역 | LLM (Claude 등) | 앞뒤 문맥·용어집·존댓말 반영, 언어 폭 넓음 | 지연·비용 관리 필요 (짧은 문장 단위 호출) |
+| STT + 언어식별 + 번역 한 번에 | **Gemini (교사 본인 키, 무료 등급)** | 0원, 엔진·서버 하나로 끝 | 일일 요청 한도, 무료 등급 데이터 활용, **만 18세 미만 대상 앱 사용 금지 약관** → [GEMINI_BYOK.md](GEMINI_BYOK.md) |
 
 **권장 순서**
-- **MVP**: 클라우드 STT(언어 식별 지원) + 번역 API → 빠르게 교실 테스트
+- **무료 MVP (성인 교실)**: 교사 본인 Gemini 키(BYOK) 무료 등급 → 설계는 [GEMINI_BYOK.md](GEMINI_BYOK.md)
+- **무료 MVP (초·중·고)**: 로컬 Whisper + 로컬 번역 모델 (약관·개인정보 문제 없음, GPU PC 권장)
+- **유료 MVP**: 클라우드 STT(언어 식별 지원) + 번역 API → 빠르게 교실 테스트
 - **2단계**: AI 허브 데이터로 만든 평가셋으로 엔진 비교 → 언어별 최적 엔진 조합
 - **3단계(선택)**: 로컬 Whisper + 미세조정 → 개인정보 측면에서 유리한 오프라인 모드
 
@@ -265,6 +268,7 @@ claude mcp add aihub-mcp --scope user \
 | `AIHUB_API_KEY` | AIHub MCP, aihubshell, 데이터 파이프라인 | 개발자 PC 환경변수 / `.env` / CI 시크릿 | ❌ 절대 금지 |
 | STT 키 (Azure/Google/CLOVA 등) | Speech Gateway | Gateway 환경변수 또는 OS 보안 저장소 | ❌ |
 | 번역 키 (Papago/DeepL/LLM 등) | Speech Gateway | Gateway 환경변수 또는 OS 보안 저장소 | ❌ |
+| 교사 본인 Gemini 키 (BYOK 모드) | Electron main 프로세스 | 교사 PC의 OS 암호화 저장소 (`safeStorage`) — 교사가 직접 입력 | ❌ (개발자 키를 넣지 않음, 교사가 각자 입력) |
 
 ### 6.2 원칙
 1. **저장소에 커밋 금지**: `.env`는 `.gitignore`에 포함, 형식은 `.env.example`로만 공유

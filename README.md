@@ -4,6 +4,7 @@
 외국어를 쓰는 학생이 말하면 **언어를 자동 인식**해서 한국어로 통역해 보여주는 데스크톱 앱입니다.
 
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)
 - 데이터 조사 도구: [AIHub-MCP](https://github.com/aihub-git/AIHub-MCP) — AI 허브 **데이터셋 메타데이터** 조회용 MCP 서버
   (실시간 STT/번역 엔진이 아니라, 평가·용어집·미세조정에 쓸 데이터를 찾는 개발 단계 도구)
 
