@@ -4,8 +4,18 @@
 외국어를 쓰는 학생이 말하면 **언어를 자동 인식**해서 한국어로 통역해 보여주는 데스크톱 앱입니다.
 **교사 PC(Windows) 전용**이며 교사만 조작합니다. 학생 PC 는 선택 기능인 링크로 자막만 볼 수 있습니다.
 
+## 내려받기 (Windows)
+
+| | |
+| --- | --- |
+| **설치판** | [ClassroomInterpreter-Setup.exe](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Setup.exe) |
+| **설치 없는 판** | [ClassroomInterpreter-Portable-win-x64.zip](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Portable-win-x64.zip) |
+
+GitHub 계정 없이 누구나 받을 수 있습니다. 사용법은 [교사용 안내](docs/TEACHER_GUIDE.md)를 보세요.
+
+## 문서
 - **사용 안내(교사용)**: [docs/TEACHER_GUIDE.md](docs/TEACHER_GUIDE.md)
-- 앱 코드: [apps/desktop](apps/desktop/README.md) — Windows 설치 파일은 GitHub Actions `Windows 설치 파일 만들기`
+- 앱 코드: [apps/desktop](apps/desktop/README.md)
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)
 - 데이터 조사 도구: [AIHub-MCP](https://github.com/aihub-git/AIHub-MCP) — AI 허브 **데이터셋 메타데이터** 조회용 MCP 서버

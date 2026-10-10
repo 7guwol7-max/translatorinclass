@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
   push:
     branches: [main, 'claude/**']
+    # v0.1.0 같은 태그를 올리면 누구나 받을 수 있는 Release 를 만든다
+    tags: ['v*']
     paths: ['apps/desktop/**', '.github/workflows/build-windows.yml']
   pull_request:
     paths: ['apps/desktop/**', '.github/workflows/build-windows.yml']
 
 permissions:
   contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
@@ -56,3 +62,31 @@ jobs:
             apps/desktop/release/*.exe
             apps/desktop/release/*.zip
           if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows-installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ClassroomInterpreter-Windows
+          path: out
+      - name: 앱 버전과 태그가 같은지 확인
+        run: |
+          version="$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "태그($GITHUB_REF_NAME)와 apps/desktop/package.json 버전(v$version)이 다릅니다" >&2
+            exit 1
+          fi
+      - name: GitHub Release 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "교실 통역 $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md
