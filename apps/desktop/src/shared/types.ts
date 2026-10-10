@@ -152,6 +152,11 @@ export interface AihubSection {
   items: { key: string; label: string; value: string }[];
 }
 
+export interface AihubFile {
+  path: string;
+  size: number;
+}
+
 export interface AihubDetail {
   id: string;
   name: string;
@@ -159,6 +164,10 @@ export interface AihubDetail {
   intro: string;
   keywords: string[];
   sections: AihubSection[];
+  /** API 로 받을 수 있는 파일 (경로순, 앞부분만) */
+  files: AihubFile[];
+  fileCount: number;
+  fileTotalBytes: number;
 }
 
 export interface AihubSearchResult {

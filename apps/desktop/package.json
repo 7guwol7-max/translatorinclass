@@ -1,7 +1,7 @@
 {
   "name": "classroom-interpreter",
   "productName": "ClassroomInterpreter",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "교실 실시간 통역 자막 오버레이 (교사 PC용)",
   "private": true,
   "license": "UNLICENSED",

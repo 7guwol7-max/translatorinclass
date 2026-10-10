@@ -414,12 +414,18 @@ function formatBytes(n: number | null): string {
   return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)}${units[i]}`;
 }
 
+/** "필리핀어(타갈로그어)" → "필리핀어": 괄호 설명은 검색어에서 뺀다 */
+function aihubLanguageWord(code: string): string {
+  return (languageInfo(code)?.ko ?? code).replace(/\(.*\)/, '').trim();
+}
+
 function renderAihubChips(): void {
   const words = [
-    ...settings.studentLanguages.map((c) => `${languageInfo(c)?.ko ?? c} 번역`),
+    // AI 허브 검색은 낱말이 그대로 들어간 데이터만 찾아서, 언어 이름만 쓰는 편이 더 많이 찾는다
+    ...settings.studentLanguages.map(aihubLanguageWord),
+    '다국어 통번역',
     '통번역',
-    '다국어 번역',
-    '교육 번역',
+    '병렬 말뭉치',
   ];
   $('aihubChips').replaceChildren(
     ...words.map((w) => {
@@ -459,29 +465,43 @@ async function aihubSearch(keyword: string): Promise<void> {
     return;
   }
   if (!keyword) {
-    status.textContent = '찾을 말을 입력해 주세요. 예: 러시아어 번역';
+    status.textContent = '찾을 말을 입력해 주세요. 예: 러시아어';
     return;
   }
   status.textContent = '찾는 중…';
   const result = await api.aihubSearch(keyword);
   if (!result.ok) status.textContent = result.message;
-  else status.textContent = result.items.length ? `'${keyword}' 검색: ${result.message}` : `'${keyword}' 와 맞는 데이터셋이 없어요. 다른 말로 찾아 보세요.`;
+  else status.textContent = result.items.length ? `'${keyword}' 검색: ${result.message}` : `'${keyword}' 이(가) 들어간 데이터셋이 없어요. '다국어 통번역' 처럼 여러 언어를 묶은 데이터도 찾아 보세요.`;
   $('aihubResults').replaceChildren(...result.items.map(datasetRow));
 }
 
-/** 파일 목록처럼 JSON 으로 온 값은 한 줄씩 읽기 쉽게 바꾼다 */
-function readableValue(value: string): string {
-  if (!/^[[{]/.test(value)) return value;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    const rows = Array.isArray(parsed) ? parsed : [parsed];
-    return rows
-      .slice(0, 40)
-      .map((r) => (r && typeof r === 'object' ? Object.values(r as Record<string, unknown>).filter((v) => v !== null && v !== '').map(String).join(' · ') : String(r)))
-      .join('\n');
-  } catch {
-    return value;
+/** 파일 경로에서 모든 파일에 공통인 앞 폴더(데이터셋 이름)는 뺀다 */
+function trimCommonFolder(paths: string[]): string[] {
+  const first = paths[0]?.split('/') ?? [];
+  let n = 0;
+  while (n < first.length - 1 && paths.every((p) => p.split('/')[n] === first[n])) n++;
+  return paths.map((p) => p.split('/').slice(n).join('/'));
+}
+
+function renderAihubFiles(d: AihubDetail): HTMLElement {
+  const det = el('details');
+  det.open = true;
+  det.append(el('summary', '', `파일 ${d.fileCount}개 · ${formatBytes(d.fileTotalBytes) || '크기 정보 없음'}`));
+  if (d.fileCount === 0) {
+    det.append(el('p', 'hint', 'API 로 받을 수 있는 파일 정보가 없어요. AI 허브 페이지에서 확인해 주세요.'));
+    return det;
   }
+  const list = el('ul', 'files');
+  const names = trimCommonFolder(d.files.map((f) => f.path));
+  d.files.forEach((f, i) => {
+    const li = el('li');
+    li.append(el('span', 'path', names[i]), el('span', 'size', formatBytes(f.size)));
+    list.append(li);
+  });
+  det.append(list);
+  if (d.fileCount > d.files.length) det.append(el('p', 'hint', `… 외 ${d.fileCount - d.files.length}개는 AI 허브 페이지에서 볼 수 있어요.`));
+  det.append(el('p', 'hint', '데이터 파일은 AI 허브에서 이용 신청 후 받습니다. 대부분 재배포가 금지되어 있으니 이 PC 안에서만 쓰세요.'));
+  return det;
 }
 
 function renderAihubDetail(d: AihubDetail): void {
@@ -493,7 +513,7 @@ function renderAihubDetail(d: AihubDetail): void {
     for (const k of d.keywords.slice(0, 12)) kw.append(el('span', '', k));
     box.append(kw);
   }
-  if (d.intro) box.append(el('p', 'intro', d.intro.length > 600 ? `${d.intro.slice(0, 600)}…` : d.intro));
+  if (d.intro) box.append(el('p', 'intro', d.intro));
   const actions = el('div', 'btn-row');
   const open = el('button', 'btn primary', 'AI 허브에서 열기·이용 신청 ↗');
   open.type = 'button';
@@ -502,13 +522,15 @@ function renderAihubDetail(d: AihubDetail): void {
   box.append(actions);
   for (const section of d.sections) {
     const det = el('details');
-    if (section.title.includes('파일')) det.open = true;
+    // 구축량·라벨링 형식이 담긴 묶음을 먼저 펼쳐 둔다
+    if (section.title.includes('메타데이터')) det.open = true;
     det.append(el('summary', '', section.title));
     const dl = el('dl');
-    for (const item of section.items.slice(0, 80)) dl.append(el('dt', '', item.label), el('dd', '', readableValue(item.value)));
+    for (const item of section.items.slice(0, 80)) dl.append(el('dt', '', item.label), el('dd', '', item.value));
     det.append(dl);
     box.append(det);
   }
+  box.append(renderAihubFiles(d));
 }
 
 async function aihubShow(id: string): Promise<void> {
@@ -535,7 +557,7 @@ function bindAihub(): void {
   document.querySelector<HTMLElement>('.nav[data-page="aihub"]')?.addEventListener('click', () => {
     renderAihubChips();
     if (!input.value && hasAihubKey && settings.studentLanguages[0]) {
-      input.value = `${languageInfo(settings.studentLanguages[0])?.ko ?? ''} 번역`;
+      input.value = aihubLanguageWord(settings.studentLanguages[0]);
       void aihubSearch(input.value);
     }
   });
