@@ -1,0 +1,20 @@
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# AI 허브 원본 데이터 (재배포 금지) / MCP 서버 jar
+data/
+*.jar
+
+# 빌드·의존성
+node_modules/
+dist/
+out/
+__pycache__/
+*.pyc
+.venv/
+
+# 로그
+logs/
+*.log
