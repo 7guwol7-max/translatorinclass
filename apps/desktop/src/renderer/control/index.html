@@ -8,147 +8,247 @@
   <link rel="stylesheet" href="control.css">
 </head>
 <body>
-  <header class="top">
-    <div class="brand">교실 통역</div>
-    <button id="startStop" class="primary" type="button">▶ 수업 시작</button>
-    <span id="state" class="chip off">멈춤</span>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="5" rx="3"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg></span>
+      <div class="brand-text"><b>교실 통역</b><small>실시간 자막 · 통역</small></div>
+    </div>
+    <button id="startStop" class="btn-start" type="button">
+      <svg class="ic-play" viewBox="0 0 24 24"><polygon points="7 4 20 12 7 20 7 4"/></svg>
+      <svg class="ic-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span id="startStopLabel">수업 시작</span>
+    </button>
+    <span id="state" class="status-pill off"><i></i><span id="stateText">대기 중</span></span>
     <div class="meters">
-      <div class="meter"><span>교사 마이크</span><i><b id="meterTeacher"></b></i></div>
-      <div class="meter" id="meterStudentWrap"><span>학생 마이크</span><i><b id="meterStudent"></b></i></div>
+      <div class="meter"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg><span>교사</span><i><b id="meterTeacher"></b></i></div>
+      <div class="meter" id="meterStudentWrap"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg><span>학생</span><i><b id="meterStudent"></b></i></div>
     </div>
     <div class="quota" id="quota" title="오늘 Gemini 무료 요청 사용량">
-      <span id="quotaText">오늘 0 / 0</span>
+      <div class="quota-text"><span>오늘 무료 사용량</span><b id="quotaText">0 / 0</b></div>
       <i><b id="quotaBar"></b></i>
     </div>
   </header>
 
-  <div class="layout">
-    <aside class="settings">
-      <details open id="secKeys">
-        <summary>① API 키</summary>
-        <div class="field">
-          <label for="geminiKey">Gemini API 키 <em>필수 · 무료</em></label>
-          <div class="row">
-            <input id="geminiKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… 붙여넣기">
-            <button id="geminiSave" type="button">저장</button>
+  <div class="shell">
+    <nav class="sidebar" aria-label="메뉴">
+      <button class="nav active" data-page="live" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 16.24a6 6 0 0 1 0-8.49M19.07 4.93a10 10 0 0 1 0 14.14M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>수업</button>
+      <button class="nav" data-page="overlay" type="button"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4M6 13h12"/></svg>자막 창</button>
+      <button class="nav" data-page="langs" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"/></svg>학생 언어</button>
+      <button class="nav" data-page="speed" type="button"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>속도·번역</button>
+      <button class="nav" data-page="mic" type="button"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>마이크</button>
+      <button class="nav" data-page="glossary" type="button"><svg viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>용어집</button>
+      <button class="nav" data-page="link" type="button"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>학생 PC 링크</button>
+      <button class="nav" data-page="keys" type="button"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg>API 키<span id="keyDot" class="dot hidden"></span></button>
+      <div class="sidebar-foot">
+        <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd> 시작/멈춤<br>
+        <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd> 자막 숨기기
+      </div>
+    </nav>
+
+    <main class="content">
+      <!-- 수업 -->
+      <section class="page active" data-page="live">
+        <div id="setupCard" class="card setup hidden">
+          <div>
+            <h2>처음 쓰시나요?</h2>
+            <p>무료 Gemini API 키를 한 번만 넣으면 바로 쓸 수 있어요. (약 5분, 카드 등록 없음)</p>
           </div>
-          <div class="row small">
-            <span id="geminiMasked" class="muted">저장된 키 없음</span>
-            <button id="geminiTest" type="button" class="link">연결 테스트</button>
-            <button id="geminiClear" type="button" class="link danger">삭제</button>
-            <button type="button" class="link" data-open="https://aistudio.google.com/apikey">무료 키 받기 ↗</button>
-          </div>
-          <p class="hint">무료 등급에서는 보낸 음성·글이 Google 제품 개선에 쓰일 수 있습니다. 학생·보호자 동의를 받고 사용하세요.</p>
+          <button class="btn primary" type="button" data-goto="keys">키 넣으러 가기</button>
         </div>
-        <div class="field">
-          <label for="claudeKey">Claude API 키 <em>선택 · 유료</em></label>
-          <div class="row">
-            <input id="claudeKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… 붙여넣기">
-            <button id="claudeSave" type="button">저장</button>
+        <div class="live-grid">
+          <div class="card feed">
+            <div class="card-head">
+              <h2>실시간 자막</h2>
+              <button id="clearLog" type="button" class="btn ghost sm">지우기</button>
+            </div>
+            <div id="log" class="log" aria-live="polite"></div>
           </div>
-          <div class="row small">
-            <span id="claudeMasked" class="muted">저장된 키 없음</span>
-            <button id="claudeTest" type="button" class="link">연결 테스트</button>
-            <button id="claudeClear" type="button" class="link danger">삭제</button>
-            <button type="button" class="link" data-open="https://platform.claude.com/">키 받기 ↗</button>
+          <aside class="side">
+            <div class="card">
+              <h3>자막 창</h3>
+              <div class="btn-row">
+                <button id="toggleOverlay" type="button" class="btn"><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg><span>자막 숨기기</span></button>
+                <button type="button" class="btn" data-goto="overlay"><svg viewBox="0 0 24 24"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>위치 바꾸기</button>
+              </div>
+              <div class="stepper">
+                <span>글자 크기</span>
+                <button id="fontDown" type="button" class="btn icon" aria-label="글자 작게">A−</button>
+                <b id="fontNow">30</b>
+                <button id="fontUp" type="button" class="btn icon" aria-label="글자 크게">A+</button>
+              </div>
+              <p class="hint">자막 위에 마우스를 올리면 나오는 막대로도 옮기고 크기를 바꿀 수 있어요.</p>
+            </div>
+            <div class="card">
+              <h3>상태</h3>
+              <dl class="stats">
+                <dt>속도</dt><dd id="statSpeed">빠르게</dd>
+                <dt>최근 자막</dt><dd id="statLatency">—</dd>
+                <dt>대기</dt><dd id="statQueue">0</dd>
+                <dt>모델</dt><dd id="statModel">—</dd>
+              </dl>
+            </div>
+            <div class="card grow">
+              <h3>알림</h3>
+              <div id="messages" class="messages"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- 자막 창 -->
+      <section class="page" data-page="overlay">
+        <header class="page-head"><h1>자막 창</h1><p>자막이 뜰 화면과 위치를 고르세요. 누르는 즉시 옮겨집니다.</p></header>
+        <div class="grid-2">
+          <div class="card">
+            <h3>어느 화면에?</h3>
+            <div id="displayList" class="seg wrap"></div>
+            <h3 class="mt">어디에?</h3>
+            <div class="monitor">
+              <div id="anchorGrid" class="anchor-grid">
+                <button type="button" data-anchor="top-left" aria-label="위 왼쪽"></button>
+                <button type="button" data-anchor="top-center" aria-label="위 가운데"></button>
+                <button type="button" data-anchor="top-right" aria-label="위 오른쪽"></button>
+                <button type="button" data-anchor="middle-left" aria-label="가운데 왼쪽"></button>
+                <button type="button" data-anchor="middle-center" aria-label="한가운데"></button>
+                <button type="button" data-anchor="middle-right" aria-label="가운데 오른쪽"></button>
+                <button type="button" data-anchor="bottom-left" aria-label="아래 왼쪽"></button>
+                <button type="button" data-anchor="bottom-center" aria-label="아래 가운데"></button>
+                <button type="button" data-anchor="bottom-right" aria-label="아래 오른쪽"></button>
+              </div>
+            </div>
+            <p id="anchorNote" class="hint center">아래 가운데</p>
+          </div>
+          <div class="card">
+            <h3>크기</h3>
+            <label class="slider"><span>너비 <b id="widthValue">90%</b></span><input id="widthPct" type="range" min="30" max="100" step="5"></label>
+            <label class="slider"><span>높이 <b id="heightValue">280px</b></span><input id="heightPx" type="range" min="120" max="700" step="20"></label>
+            <label class="slider"><span>글자 크기 <b id="fontSizeValue">30px</b></span><input id="fontSize" type="range" min="16" max="72" step="2"></label>
+            <label class="switch-row"><span>한국어 원문도 보이기</span><input id="showKorean" type="checkbox" class="switch"></label>
+            <h3 class="mt">마우스로 옮기기</h3>
+            <ol class="howto">
+              <li>자막 위에 마우스를 올리면 오른쪽 위에 <b>도구 막대</b>가 나타납니다.</li>
+              <li>보라색 <b>이동</b> 버튼을 누른 채 끌면 옮겨지고, 오른쪽 아래 모서리를 끌면 크기가 바뀝니다.</li>
+            </ol>
+            <div class="btn-row">
+              <button id="moveOverlay" type="button" class="btn">자막 전체를 끌어서 옮기기 (Ctrl+Alt+M)</button>
+              <button id="resetOverlay" type="button" class="btn ghost">처음 위치로</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 학생 언어 -->
+      <section class="page" data-page="langs">
+        <header class="page-head"><h1>학생 언어</h1><p>학급 학생들이 쓰는 언어를 고르세요. 선생님 말은 이 언어들로 번역되고, 학생 말은 이 중에서 자동으로 알아듣습니다.</p></header>
+        <div class="card">
+          <div id="studentLangs" class="chips"></div>
+        </div>
+        <div class="card">
+          <h3>자막 창에 보일 언어 <em>최대 3개</em></h3>
+          <div id="overlayLangs" class="chips"></div>
+        </div>
+      </section>
+
+      <!-- 속도·번역 -->
+      <section class="page" data-page="speed">
+        <header class="page-head"><h1>속도·번역</h1><p>빠를수록 문장을 짧게 끊어 자주 보내므로 무료 한도를 더 빨리 씁니다.</p></header>
+        <div class="card">
+          <h3>자막 속도</h3>
+          <div class="option-cards">
+            <label class="option"><input type="radio" name="latency" value="fast"><span><b>빠르게</b><small>말이 끝나고 약 1~2초. 문장마다 바로 보냄</small></span></label>
+            <label class="option"><input type="radio" name="latency" value="balanced"><span><b>보통</b><small>약 2~4초. 짧은 말을 모아 보냄</small></span></label>
+            <label class="option"><input type="radio" name="latency" value="saving"><span><b>절약</b><small>약 5~10초. 길게 묶어 한도를 아낌</small></span></label>
+          </div>
+          <p class="hint">오늘 사용량이 한도의 80%를 넘으면 자동으로 '절약'으로 바뀝니다.</p>
+        </div>
+        <div class="card">
+          <h3>번역 엔진</h3>
+          <div class="option-cards two">
+            <label class="option"><input type="radio" name="translator" value="gemini"><span><b>Gemini <em class="tag free">무료</em></b><small>받아쓰기와 번역을 한 번에. 가장 빠름</small></span></label>
+            <label class="option"><input type="radio" name="translator" value="claude"><span><b>Claude <em class="tag paid">유료</em></b><small>받아쓰기는 Gemini, 번역은 Claude (교사 키 필요)</small></span></label>
+          </div>
+          <div class="field"><label for="claudeModel">Claude 모델</label><select id="claudeModel"></select></div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3>Gemini 모델</h3>
+            <div class="field"><label for="geminiModel">기본 모델</label><input id="geminiModel" list="geminiModels" spellcheck="false"><datalist id="geminiModels"></datalist></div>
+            <div class="field"><label for="geminiFallback">대체 모델 <em>선택</em></label><input id="geminiFallback" list="geminiModels" spellcheck="false" placeholder="기본 모델 한도를 다 쓰면 이어서 쓸 모델"></div>
+            <p class="hint">API 키 화면의 '연결 테스트'를 누르면 쓸 수 있는 모델 목록이 채워집니다.</p>
+          </div>
+          <div class="card">
+            <h3>무료 한도</h3>
+            <div class="field"><label for="dailyLimit">하루 요청 수 (RPD)</label><input id="dailyLimit" type="number" min="1" step="1"></div>
+            <div class="field"><label for="rpm">분당 요청 수 (RPM)</label><input id="rpm" type="number" min="1" step="1"></div>
+            <button type="button" class="btn ghost sm" data-open="https://aistudio.google.com/">AI Studio 에서 내 한도 보기 ↗</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 마이크 -->
+      <section class="page" data-page="mic">
+        <header class="page-head"><h1>마이크</h1><p>마이크가 하나면 교사·학생이 같이 쓰고, 언어로 누가 말했는지 구분합니다.</p></header>
+        <div class="card">
+          <div class="field"><label for="teacherMic">교사 마이크</label><select id="teacherMic"></select></div>
+          <div class="seg">
+            <label><input type="radio" name="micMode" value="auto"><span>교사·학생 같이 쓰기 (자동 구분)</span></label>
+            <label><input type="radio" name="micMode" value="teacher"><span>교사 전용 (한국어만)</span></label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="field"><label for="studentMic">학생 마이크 <em>선택</em></label><select id="studentMic"></select></div>
+          <button id="refreshMics" type="button" class="btn ghost sm">마이크 목록 새로고침</button>
+        </div>
+      </section>
+
+      <!-- 용어집 -->
+      <section class="page" data-page="glossary">
+        <header class="page-head"><h1>교과 용어집</h1><p>한 줄에 하나씩 <code>한국어 = 번역어</code>. 번역할 때 이 용어를 그대로 씁니다.</p></header>
+        <div class="card">
+          <textarea id="glossary" rows="14" spellcheck="false" placeholder="광합성 = photosynthesis = quang hợp&#10;엽록체 = chloroplast = lục lạp"></textarea>
+        </div>
+      </section>
+
+      <!-- 학생 PC 링크 -->
+      <section class="page" data-page="link">
+        <header class="page-head"><h1>학생 PC 링크</h1><p>같은 학교 네트워크의 학생 PC 가 링크를 열면 자기 언어 자막을 봅니다.</p></header>
+        <div class="card">
+          <label class="switch-row big"><span>학생 PC 링크 열기</span><input id="linkEnabled" type="checkbox" class="switch"></label>
+          <div id="linkBox" class="linkbox"></div>
+          <div class="field narrow"><label for="linkPort">포트</label><input id="linkPort" type="number" min="1024" max="65535"></div>
+          <p class="hint">처음 켤 때 Windows 방화벽 창이 뜨면 '허용'을 눌러 주세요. 링크를 켤 때마다 주소가 새로 바뀝니다.</p>
+          <p class="notice warn">Gemini API 약관은 만 18세 미만이 이용하는 서비스에 쓰는 것을 금지합니다. 학생이 미성년자라면 이 기능은 켜지 않는 것을 권장합니다.</p>
+        </div>
+      </section>
+
+      <!-- API 키 -->
+      <section class="page" data-page="keys">
+        <header class="page-head"><h1>API 키</h1><p>키는 이 PC 의 Windows 암호화 저장소에만 저장됩니다.</p></header>
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Gemini <em class="tag free">필수 · 무료</em></h3><span id="geminiMasked" class="badge">없음</span></div>
+            <div class="field"><input id="geminiKey" type="password" autocomplete="off" spellcheck="false" placeholder="AIza… 붙여넣기"></div>
+            <div class="btn-row">
+              <button id="geminiSave" type="button" class="btn primary">저장</button>
+              <button id="geminiTest" type="button" class="btn">연결 테스트</button>
+              <button id="geminiClear" type="button" class="btn ghost danger">삭제</button>
+            </div>
+            <button type="button" class="btn link" data-open="https://aistudio.google.com/apikey">Google AI Studio 에서 무료 키 받기 ↗</button>
+            <p class="notice">무료 등급에서는 보낸 음성·글이 Google 제품 개선에 쓰일 수 있습니다. 학생·보호자 동의를 받고 사용하세요.</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Claude <em class="tag paid">선택 · 유료</em></h3><span id="claudeMasked" class="badge">없음</span></div>
+            <div class="field"><input id="claudeKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-… 붙여넣기"></div>
+            <div class="btn-row">
+              <button id="claudeSave" type="button" class="btn primary">저장</button>
+              <button id="claudeTest" type="button" class="btn">연결 테스트</button>
+              <button id="claudeClear" type="button" class="btn ghost danger">삭제</button>
+            </div>
+            <button type="button" class="btn link" data-open="https://platform.claude.com/">Claude 플랫폼에서 키 받기 ↗</button>
           </div>
         </div>
         <p id="keyResult" class="result" role="status"></p>
-      </details>
-
-      <details open>
-        <summary>② 학생 언어</summary>
-        <p class="hint">학급 학생들이 쓰는 언어를 고르세요. 선생님 말은 이 언어들로 번역되고, 학생 말은 이 언어 중에서 자동으로 알아듣습니다.</p>
-        <div id="studentLangs" class="checks"></div>
-        <div class="field">
-          <label>자막 화면에 보일 언어 <em>최대 3개</em></label>
-          <div id="overlayLangs" class="checks"></div>
-          <label class="inline"><input id="showKorean" type="checkbox"> 한국어 원문도 보이기</label>
-        </div>
-      </details>
-
-      <details open>
-        <summary>③ 마이크</summary>
-        <div class="field">
-          <label for="teacherMic">교사 마이크</label>
-          <select id="teacherMic"></select>
-          <label class="inline"><input type="radio" name="micMode" value="auto"> 교사·학생이 이 마이크를 같이 씀 (언어로 자동 구분)</label>
-          <label class="inline"><input type="radio" name="micMode" value="teacher"> 교사 전용 (한국어만)</label>
-        </div>
-        <div class="field">
-          <label for="studentMic">학생 마이크 <em>선택</em></label>
-          <select id="studentMic"></select>
-        </div>
-        <button id="refreshMics" type="button" class="link">마이크 목록 새로고침</button>
-      </details>
-
-      <details>
-        <summary>④ 번역 엔진·모델</summary>
-        <label class="inline"><input type="radio" name="translator" value="gemini"> Gemini 가 받아쓰기와 번역을 한 번에 (무료)</label>
-        <label class="inline"><input type="radio" name="translator" value="claude"> 받아쓰기는 Gemini, 번역은 Claude (유료, 교사 키 필요)</label>
-        <div class="field">
-          <label for="claudeModel">Claude 모델</label>
-          <select id="claudeModel"></select>
-        </div>
-        <div class="field">
-          <label for="geminiModel">Gemini 모델</label>
-          <input id="geminiModel" list="geminiModels" spellcheck="false">
-          <datalist id="geminiModels"></datalist>
-          <p class="hint">'연결 테스트'를 누르면 이 키로 쓸 수 있는 모델 목록과 추천 모델이 나옵니다. 무료 한도가 가장 넉넉한 Flash-Lite 계열을 권장합니다.</p>
-        </div>
-        <div class="field">
-          <label for="geminiFallback">대체 모델 <em>선택</em></label>
-          <input id="geminiFallback" list="geminiModels" spellcheck="false" placeholder="기본 모델 한도를 다 쓰면 이어서 쓸 모델">
-        </div>
-      </details>
-
-      <details>
-        <summary>⑤ 무료 한도</summary>
-        <p class="hint">Google AI Studio 의 '사용량·한도' 화면에서 내 모델의 하루 요청 수(RPD)와 분당 요청 수(RPM)를 확인해 적어 주세요. 한도의 70%를 넘으면 문장을 더 길게 묶어 요청을 아낍니다.</p>
-        <div class="grid2">
-          <label>하루 요청 한도<input id="dailyLimit" type="number" min="1" step="1"></label>
-          <label>분당 요청 한도<input id="rpm" type="number" min="1" step="1"></label>
-        </div>
-        <button type="button" class="link" data-open="https://aistudio.google.com/">AI Studio 열기 ↗</button>
-      </details>
-
-      <details>
-        <summary>⑥ 교과 용어집</summary>
-        <p class="hint">한 줄에 하나씩: 한국어 = 번역어. 예) 광합성 = photosynthesis = quang hợp</p>
-        <textarea id="glossary" rows="6" spellcheck="false"></textarea>
-      </details>
-
-      <details>
-        <summary>⑦ 자막 화면</summary>
-        <label>글자 크기 <span id="fontSizeValue"></span><input id="fontSize" type="range" min="16" max="72" step="2"></label>
-        <div class="row">
-          <button id="moveOverlay" type="button">위치·크기 바꾸기</button>
-          <button id="resetOverlay" type="button" class="link">처음 위치로</button>
-        </div>
-        <ul class="keys">
-          <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>P</kbd> 듣기 시작/멈춤</li>
-          <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd> 자막 숨기기/보이기</li>
-          <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>M</kbd> 자막 위치·크기 바꾸기 (다시 누르면 고정)</li>
-        </ul>
-      </details>
-
-      <details>
-        <summary>⑧ 학생 PC 링크</summary>
-        <label class="inline"><input id="linkEnabled" type="checkbox"> 학생 PC 에서 자막을 볼 수 있는 링크 열기</label>
-        <div id="linkBox" class="linkbox"></div>
-        <label>포트<input id="linkPort" type="number" min="1024" max="65535"></label>
-        <p class="hint">학생 PC 가 교사 PC 와 같은 학교 네트워크에 있어야 합니다. 처음 켤 때 Windows 방화벽 창이 뜨면 '허용'을 눌러 주세요. 링크를 켤 때마다 주소가 새로 바뀝니다.</p>
-        <p class="hint warn">Gemini API 약관은 만 18세 미만이 이용하는 서비스에 쓰는 것을 금지합니다. 학생이 미성년자라면 이 링크 기능은 켜지 않는 것을 권장합니다.</p>
-      </details>
-    </aside>
-
-    <main class="live">
-      <div class="live-head">
-        <h2>실시간 자막</h2>
-        <button id="clearLog" type="button" class="link">지우기</button>
-      </div>
-      <div id="log" class="log" aria-live="polite"></div>
-      <div id="messages" class="messages"></div>
+      </section>
     </main>
   </div>
   <script src="control.js"></script>

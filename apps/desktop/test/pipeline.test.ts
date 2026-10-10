@@ -51,28 +51,67 @@ describe('Pipeline', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].prompt).toContain('teacher speaking Korean');
     expect(captions).toHaveLength(1);
-    expect(captions[0]).toMatchObject({ speaker: 'teacher', lang: 'ko', transcript: '문장 1', translations: { vi: 'câu 1', zh: '句子 1' } });
+    expect(captions[0]).toMatchObject({ speaker: 'teacher', lang: 'ko', transcript: '문장 1', translations: { vi: 'câu 1', zh: '句子 1' }, final: true, seq: 0 });
     expect(captions[0].translations.en).toBeUndefined();
   });
 
-  it('응답을 기다리는 동안 쌓인 같은 채널 구간을 한 요청으로 합친다', async () => {
+  it('요청 2개를 동시에 보내 앞 요청이 끝나길 기다리지 않는다', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const started: number[] = [];
+    const { pipeline, captions } = setup({}, async () => {
+      started.push(Date.now());
+      if (started.length === 1) await gate; // 첫 요청이 오래 걸려도
+      return { lang: 'ko', transcript: `t${started.length}`, translations: {} };
+    });
+    pipeline.enqueue('teacher', second(2));
+    await vi.advanceTimersByTimeAsync(0);
+    pipeline.enqueue('teacher', second(2));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(started).toHaveLength(2); // 두 번째는 바로 출발
+    expect(captions.filter((c) => c.final).map((c) => c.seq)).toEqual([1]); // 뒤 문장이 먼저 끝날 수 있어 seq 로 정렬
+    release();
+    await vi.runAllTimersAsync();
+    expect(captions.filter((c) => c.final).map((c) => c.seq).sort()).toEqual([0, 1]);
+  });
+
+  it('두 요청이 다 바쁜 동안 쌓인 같은 채널 구간은 한 요청으로 합친다', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
     const calls: number[] = [];
     const { pipeline } = setup({}, async (_m, wav) => {
       calls.push(wav.length);
-      if (calls.length === 1) await gate;
+      if (calls.length <= 2) await gate;
       return { lang: 'ko', transcript: 'x', translations: {} };
     });
     pipeline.enqueue('teacher', second(3));
+    pipeline.enqueue('teacher', second(3));
     await vi.advanceTimersByTimeAsync(0);
-    pipeline.enqueue('teacher', second(3));
-    pipeline.enqueue('teacher', second(3));
-    pipeline.enqueue('teacher', second(3));
+    for (let i = 0; i < 4; i++) pipeline.enqueue('teacher', second(3));
     release();
     await vi.runAllTimersAsync();
-    expect(calls).toHaveLength(2); // 4개 구간 → 요청 2번
-    expect(calls[1]).toBeGreaterThan(calls[0] * 2.5);
+    expect(calls).toHaveLength(3); // 6개 구간 → 요청 3번
+    expect(calls[2]).toBeGreaterThan(calls[0] * 3.5);
+  });
+
+  it('받는 중인 받아쓰기·번역을 먼저 보내고 마지막에 확정본을 보낸다', async () => {
+    const { pipeline, captions } = setup({}, async (_m, _w, _p, onPartial) => {
+      onPartial?.({ lang: 'ko', transcript: '오늘은', translations: {} });
+      onPartial?.({ lang: 'ko', transcript: '오늘은 광', translations: {} }); // 120ms 안에 또 오면 건너뜀
+      vi.setSystemTime(Date.now() + 200);
+      onPartial?.({ lang: 'ko', transcript: '오늘은 광합성을 배워요', translations: { vi: 'Hôm nay' } });
+      vi.setSystemTime(Date.now() + 200);
+      return { lang: 'ko', transcript: '오늘은 광합성을 배워요', translations: { vi: 'Hôm nay học quang hợp', zh: '今天学习光合作用' } };
+    });
+    pipeline.enqueue('teacher', second(2));
+    await vi.runAllTimersAsync();
+    expect(captions.map((c) => [c.final, c.transcript])).toEqual([
+      [false, '오늘은'],
+      [false, '오늘은 광합성을 배워요'],
+      [true, '오늘은 광합성을 배워요'],
+    ]);
+    expect(new Set(captions.map((c) => c.id)).size).toBe(1); // 같은 자막을 고쳐 쓴다
+    expect(captions[2].translations).toEqual({ vi: 'Hôm nay học quang hợp', zh: '今天学习光合作用' });
   });
 
   it('다른 채널은 합치지 않고 말한 순서를 지킨다', async () => {
@@ -93,18 +132,21 @@ describe('Pipeline', () => {
     expect(order).toEqual(['teacher', 'student', 'teacher']);
   });
 
-  it('분당 한도 간격을 지킨다', async () => {
+  it('분당 한도 안에서는 기다리지 않고, 넘으면 60초 창이 빌 때까지 기다린다', async () => {
     const times: number[] = [];
-    const { pipeline } = setup({ requestsPerMinute: 10 }, async () => {
+    const { pipeline } = setup({ requestsPerMinute: 2 }, async () => {
       times.push(Date.now());
       return { lang: 'ko', transcript: 'z', translations: {} };
     });
-    pipeline.enqueue('teacher', second(1));
-    await vi.advanceTimersByTimeAsync(0);
-    pipeline.enqueue('student', second(1));
+    const t0 = Date.now();
+    for (const ch of ['teacher', 'student', 'teacher'] as const) {
+      pipeline.enqueue(ch, second(1));
+      await vi.advanceTimersByTimeAsync(0);
+    }
     await vi.runAllTimersAsync();
-    expect(times).toHaveLength(2);
-    expect(times[1] - times[0]).toBeGreaterThanOrEqual(6000);
+    expect(times).toHaveLength(3);
+    expect(times[1] - t0).toBeLessThan(100); // 두 번째도 바로
+    expect(times[2] - t0).toBeGreaterThanOrEqual(60_000); // 세 번째는 첫 요청 60초 뒤
   });
 
   it('429 를 받으면 안내된 시간만큼 기다렸다가 같은 구간을 다시 보낸다', async () => {
@@ -210,7 +252,9 @@ describe('Pipeline', () => {
     await vi.runAllTimersAsync();
     expect(prompts[0]).toContain('Do not translate');
     expect(translateCalls).toEqual([{ model: 'claude-opus-5-5', targets: ['vi', 'zh'] }]);
-    expect(captions[0].translations).toEqual({ vi: 'Học quang hợp', zh: '学习光合作用' });
+    expect(captions.map((c) => c.final)).toEqual([false, true]); // 받아쓰기가 Claude 를 기다리지 않고 먼저
+    expect(captions[0].translations).toEqual({});
+    expect(captions[1].translations).toEqual({ vi: 'Học quang hợp', zh: '学习光合作用' });
   });
 });
 
@@ -230,9 +274,9 @@ describe('QuotaTracker', () => {
   it('저장된 오늘 사용량을 이어서 쓴다', () => {
     const store = memoryStore();
     const now = () => Date.parse('2026-10-12T01:00:00Z');
-    store.save({ day: pacificDay(now()), used: { m: 7 } });
+    store.save({ day: pacificDay(now()), used: { m: 8 } });
     const q = new QuotaTracker(store, () => ({ daily: 10, perMinute: 10 }), now);
-    expect(q.used('m')).toBe(7);
+    expect(q.used('m')).toBe(8);
     expect(q.pressure('m')).toBe('saving');
   });
 

@@ -1,6 +1,7 @@
 // Gemini·Claude 에 보낼 지시문과 응답 해석 (순수 함수 — 테스트 대상)
 import type { Channel, Speaker } from './types';
 import { describeForModel, normalizeLanguageCode } from './languages';
+import { parsePartialJson } from './partial-json';
 
 export interface SegmentPromptInput {
   channel: Channel;
@@ -79,10 +80,13 @@ export const SEGMENT_RESPONSE_SCHEMA = {
           text: { type: 'STRING' },
         },
         required: ['lang', 'text'],
+        propertyOrdering: ['lang', 'text'],
       },
     },
   },
   required: ['lang', 'transcript', 'translations'],
+  // 언어 → 받아쓰기 → 번역 순서로 받아야 스트리밍 중에 받아쓰기부터 먼저 보여줄 수 있다
+  propertyOrdering: ['lang', 'transcript', 'translations'],
 } as const;
 
 export interface SegmentResult {
@@ -93,14 +97,28 @@ export interface SegmentResult {
 
 /** 모델 응답(JSON 문자열)을 검증·정리한다. 말소리가 없으면 transcript 가 빈 문자열 */
 export function parseSegmentResult(text: string | undefined): SegmentResult {
-  const empty: SegmentResult = { lang: '', transcript: '', translations: {} };
-  if (!text) return empty;
+  if (!text) return emptyResult();
   let data: unknown;
   try {
     data = JSON.parse(stripCodeFence(text));
   } catch {
-    return empty;
+    return emptyResult();
   }
+  return normalizeSegment(data);
+}
+
+/** 스트리밍으로 받는 중인 응답에서 지금까지 나온 부분 (받아쓰기가 아직 없으면 빈 결과) */
+export function parsePartialSegment(prefix: string): SegmentResult {
+  const body = prefix.trim().replace(/^```(?:json)?\s*/, '');
+  return normalizeSegment(parsePartialJson(body));
+}
+
+function emptyResult(): SegmentResult {
+  return { lang: '', transcript: '', translations: {} };
+}
+
+function normalizeSegment(data: unknown): SegmentResult {
+  const empty = emptyResult();
   if (!data || typeof data !== 'object') return empty;
   const obj = data as Record<string, unknown>;
   const transcript = typeof obj.transcript === 'string' ? obj.transcript.trim() : '';

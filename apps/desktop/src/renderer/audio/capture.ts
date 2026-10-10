@@ -1,7 +1,7 @@
 // 마이크 하나를 열어 16kHz 로 바꾼 뒤 Segmenter 에 흘려 넣는다.
 import { StreamingDownsampler } from './resampler';
-import { NORMAL_PARAMS, SAVING_PARAMS, Segmenter } from './segmenter';
-import type { QuotaPressure } from '../../shared/types';
+import { NORMAL_PARAMS, Segmenter, paramsFor } from './segmenter';
+import type { LatencyMode, QuotaPressure } from '../../shared/types';
 
 export interface MicCaptureOptions {
   deviceId: string;
@@ -46,8 +46,9 @@ export class MicCapture {
     mute.connect(this.context.destination);
   }
 
-  setPressure(pressure: QuotaPressure): void {
-    this.segmenter.setParams(pressure === 'normal' ? NORMAL_PARAMS : SAVING_PARAMS);
+  /** 속도 설정·한도 상황에 맞춰 구간 길이를 바꾼다 */
+  setTuning(mode: LatencyMode, pressure: QuotaPressure): void {
+    this.segmenter.setParams(paramsFor(mode, pressure));
   }
 
   async stop(): Promise<void> {

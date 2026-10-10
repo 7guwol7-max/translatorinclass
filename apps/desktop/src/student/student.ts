@@ -3,6 +3,8 @@
 interface StudentLanguage { code: string; native: string; ko: string; rtl: boolean }
 interface CaptionData {
   id: string;
+  seq: number;
+  final: boolean;
   ts: number;
   speaker: 'teacher' | 'student';
   lang: string;
@@ -15,6 +17,7 @@ const select = $<HTMLSelectElement>('language');
 const list = $<HTMLElement>('captions');
 const empty = $<HTMLElement>('empty');
 const conn = $<HTMLElement>('conn');
+const connText = $<HTMLElement>('connText');
 const showKorean = $<HTMLInputElement>('showKorean');
 
 const MAX_SHOWN = 30;
@@ -59,7 +62,7 @@ function renderCaption(c: CaptionData): HTMLElement {
   const lang = chosen();
   const rtl = languages.find((l) => l.code === lang)?.rtl ?? false;
   const box = document.createElement('article');
-  box.className = `cap ${c.speaker}`;
+  box.className = `cap ${c.speaker}${c.final === false ? ' partial' : ''}`;
   if (c.speaker === 'teacher') {
     box.append(line('main', c.translations[lang] ?? c.transcript, rtl && Boolean(c.translations[lang])));
     if (showKorean.checked && c.translations[lang]) box.append(line('sub', c.transcript));
@@ -77,20 +80,29 @@ function renderCaption(c: CaptionData): HTMLElement {
 }
 
 function renderAll(): void {
+  captions.sort((a, b) => a.seq - b.seq);
   list.replaceChildren(...captions.map(renderCaption));
   empty.classList.toggle('hidden', captions.length > 0);
   window.scrollTo({ top: document.body.scrollHeight });
 }
 
+/** 새 자막은 말한 순서대로 끼워 넣고, 같은 id(받는 중 → 확정)는 그 자리에서 바꾼다 */
 function addCaption(c: CaptionData): void {
-  if (captions.some((x) => x.id === c.id)) return; // 다시 연결될 때 받은 지난 자막은 건너뜀
-  captions.push(c);
-  while (captions.length > MAX_SHOWN) captions.shift();
-  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 120;
-  list.append(renderCaption(c));
-  while (list.children.length > MAX_SHOWN) list.firstElementChild?.remove();
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+  const index = captions.findIndex((x) => x.id === c.id);
+  if (index >= 0) {
+    captions[index] = c;
+    const node = list.children[index];
+    if (node) node.replaceWith(renderCaption(c));
+    else renderAll();
+  } else {
+    captions.push(c);
+    captions.sort((a, b) => a.seq - b.seq);
+    while (captions.length > MAX_SHOWN) captions.shift();
+    renderAll();
+  }
   empty.classList.add('hidden');
-  if (nearBottom) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  if (nearBottom) window.scrollTo({ top: document.body.scrollHeight, behavior: index >= 0 ? 'auto' : 'smooth' });
 }
 
 select.addEventListener('change', () => { save('language', select.value); renderAll(); });
@@ -105,8 +117,14 @@ function resize(delta: number): void {
 }
 
 const events = new EventSource('events');
-events.addEventListener('open', () => conn.classList.add('ok'));
-events.addEventListener('error', () => conn.classList.remove('ok'));
+events.addEventListener('open', () => {
+  conn.classList.add('ok');
+  connText.textContent = '연결됨';
+});
+events.addEventListener('error', () => {
+  conn.classList.remove('ok');
+  connText.textContent = '다시 연결 중…';
+});
 events.addEventListener('config', (e) => {
   languages = (JSON.parse((e as MessageEvent<string>).data) as { languages: StudentLanguage[] }).languages;
   renderLanguages();

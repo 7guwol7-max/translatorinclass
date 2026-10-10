@@ -33,6 +33,15 @@ const api: RendererApi = {
   onToggleListening: (cb) => listen<void>('session:toggle')(() => cb()),
   onOverlayMoveMode: listen('overlay:move-mode'),
   onSessionStopped: listen('session:stopped'),
+  getDisplays: () => ipcRenderer.invoke('overlay:displays'),
+  onDisplays: listen('displays'),
+  placeOverlay: (placement) => ipcRenderer.invoke('overlay:place', placement),
+  setOverlayVisible: (visible) => ipcRenderer.invoke('overlay:set-visible', visible),
+  onOverlayVisible: listen('overlay:visible'),
+  toggleMoveMode: () => ipcRenderer.invoke('overlay:toggle-move'),
+  setOverlayInteractive: (interactive) => ipcRenderer.send('overlay:interactive', interactive),
+  overlayPointer: (kind, phase) => ipcRenderer.send('overlay:pointer', kind, phase),
+  nudgeOverlayFont: (delta) => ipcRenderer.send('overlay:font', delta),
 };
 
 contextBridge.exposeInMainWorld('api', api);

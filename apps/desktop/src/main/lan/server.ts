@@ -102,10 +102,23 @@ export class StudentLinkServer {
     return `http://127.0.0.1:${this.port}/s/${this.token}/`;
   }
 
+  /** 받는 중인 자막(final=false)도 보내고, 같은 id 가 다시 오면 기록을 바꿔 둔다 */
   broadcast(caption: Caption): void {
-    const slim = { id: caption.id, ts: caption.ts, speaker: caption.speaker, lang: caption.lang, transcript: caption.transcript, translations: caption.translations };
-    this.history.push(slim as Caption);
-    if (this.history.length > HISTORY) this.history.shift();
+    const slim = {
+      id: caption.id,
+      seq: caption.seq,
+      ts: caption.ts,
+      speaker: caption.speaker,
+      lang: caption.lang,
+      transcript: caption.transcript,
+      translations: caption.translations,
+      final: caption.final,
+    };
+    const index = this.history.findIndex((c) => c.id === slim.id);
+    if (index >= 0) this.history[index] = slim as Caption;
+    else this.history.push(slim as Caption);
+    this.history.sort((a, b) => a.seq - b.seq);
+    while (this.history.length > HISTORY) this.history.shift();
     this.writeAll(sse('caption', slim));
   }
 

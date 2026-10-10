@@ -9,19 +9,24 @@
 </head>
 <body>
   <header class="bar">
-    <label class="lang">
-      <span aria-hidden="true">🌐</span>
-      <select id="language" aria-label="Language / 언어"></select>
-    </label>
+    <div class="brand"><span class="logo" aria-hidden="true">CC</span><b>수업 자막</b><span id="conn" class="conn" title="connection"><i></i><span id="connText">연결 중…</span></span></div>
     <div class="tools">
-      <button id="smaller" type="button" aria-label="Smaller text">A−</button>
-      <button id="bigger" type="button" aria-label="Bigger text">A+</button>
-      <label class="toggle"><input id="showKorean" type="checkbox" checked> 한국어</label>
-      <span id="conn" class="conn" title="connection">●</span>
+      <label class="lang">
+        <span aria-hidden="true">🌐</span>
+        <select id="language" aria-label="Language / 언어"></select>
+      </label>
+      <div class="size">
+        <button id="smaller" type="button" aria-label="Smaller text">A−</button>
+        <button id="bigger" type="button" aria-label="Bigger text">A+</button>
+      </div>
+      <label class="toggle"><input id="showKorean" type="checkbox" checked><span>한국어</span></label>
     </div>
   </header>
   <main id="captions" aria-live="polite"></main>
-  <p id="empty" class="empty">선생님이 말하면 여기에 자막이 나와요.<br>Captions will appear here when your teacher speaks.</p>
+  <div id="empty" class="empty">
+    <div class="empty-icon">💬</div>
+    <p>선생님이 말하면 여기에 자막이 나와요.<br><span>Captions will appear here when your teacher speaks.</span></p>
+  </div>
   <script src="student.js"></script>
 </body>
 </html>

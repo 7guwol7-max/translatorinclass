@@ -9,8 +9,24 @@
 </head>
 <body>
   <div id="frame" class="frame">
+    <div id="toolbar" class="toolbar tool" role="toolbar" aria-label="자막 창 도구">
+      <button id="dragHandle" class="tool-btn drag" type="button" title="누른 채 끌어서 옮기기">
+        <svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+        <span>이동</span>
+      </button>
+      <span class="sep"></span>
+      <button id="fontDown" class="tool-btn" type="button" title="글자 작게">A−</button>
+      <button id="fontUp" class="tool-btn" type="button" title="글자 크게">A+</button>
+      <span class="sep"></span>
+      <button id="hide" class="tool-btn" type="button" title="자막 숨기기 (Ctrl+Alt+H)">
+        <svg viewBox="0 0 24 24"><path d="M9.9 4.2A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a17 17 0 0 1-2.2 3.4M6.6 6.6A16 16 0 0 0 2 12s3 8 10 8a9.6 9.6 0 0 0 5.4-1.6M2 2l20 20M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+      </button>
+    </div>
     <div id="moveHint" class="move-hint hidden">끌어서 옮기고 가장자리로 크기를 바꾸세요 · 끝나면 Ctrl+Alt+M</div>
     <div id="stack" class="stack"></div>
+    <div id="resizeGrip" class="grip tool" title="끌어서 크기 바꾸기">
+      <svg viewBox="0 0 24 24"><path d="M21 11v10H11M21 21 11 11"/></svg>
+    </div>
   </div>
   <script src="overlay.js"></script>
 </body>

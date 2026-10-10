@@ -1,4 +1,4 @@
-// 무료 등급 요청 한도 관리: 일일 사용량(모델별), 분당 간격, 한도 초과 시 대기.
+// 무료 등급 요청 한도 관리: 일일 사용량(모델별), 분당 요청 수(최근 60초 창), 한도 초과 시 대기.
 // Google 의 일일 한도는 태평양 시간 자정에 초기화된다 (한국 시간 오후 4~5시).
 
 import type { QuotaPressure } from '../shared/types';
@@ -38,7 +38,8 @@ export function nextPacificMidnight(ms: number): number {
 
 export class QuotaTracker {
   private state: QuotaState;
-  private lastSentAt = 0;
+  /** 최근 60초 안에 보낸 요청 시각들 */
+  private sent: number[] = [];
   private backoffUntil = 0;
   private exhausted = new Set<string>();
 
@@ -71,9 +72,9 @@ export class QuotaTracker {
     return this.state.used[model] ?? 0;
   }
 
-  /** 요청을 보낼 때 (분당 간격 계산용) */
+  /** 요청을 보낼 때 (분당 한도 계산용) */
   noteSent(): void {
-    this.lastSentAt = this.now();
+    this.sent.push(this.now());
   }
 
   /** 한도에 잡히는 요청 하나 (성공, 또는 429 가 아닌 실패) */
@@ -83,10 +84,14 @@ export class QuotaTracker {
     this.store.save(this.state);
   }
 
-  /** 다음 요청을 보내도 되는 가장 이른 시각 */
+  /** 다음 요청을 보내도 되는 가장 이른 시각.
+   *  일정 간격으로 띄우지 않고, 최근 60초 동안 보낸 수가 분당 한도보다 적으면 바로 보낸다. */
   nextAllowedAt(): number {
-    const spacing = 60_000 / Math.max(1, this.limits().perMinute);
-    return Math.max(this.lastSentAt + spacing, this.backoffUntil);
+    const now = this.now();
+    this.sent = this.sent.filter((t) => t > now - 60_000);
+    const perMinute = Math.max(1, this.limits().perMinute);
+    const windowFreeAt = this.sent.length < perMinute ? now : this.sent[this.sent.length - perMinute] + 60_000;
+    return Math.max(windowFreeAt, this.backoffUntil);
   }
 
   backoff(ms: number): void {
@@ -109,6 +114,6 @@ export class QuotaTracker {
 
   pressure(model: string): QuotaPressure {
     if (this.isExhausted(model)) return 'exhausted';
-    return this.used(model) >= this.limits().daily * 0.7 ? 'saving' : 'normal';
+    return this.used(model) >= this.limits().daily * 0.8 ? 'saving' : 'normal';
   }
 }

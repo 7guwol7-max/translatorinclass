@@ -1,5 +1,6 @@
 // 발화 구간 대기열 → Gemini(받아쓰기·번역) → (선택) Claude 번역 → 자막.
-// 한 번에 요청 하나만 보내고, 기다리는 동안 쌓인 같은 채널 구간은 하나로 합쳐 요청 수를 줄인다.
+// 요청을 최대 2개까지 동시에 보내고, 응답은 스트리밍으로 받아 받아쓰기부터 바로 보여준다.
+// 두 요청이 다 바쁘거나 분당 한도에 걸려 기다리는 동안 쌓인 같은 채널 구간은 하나로 합쳐 요청 수를 줄인다.
 
 import type { Caption, Channel, QuotaPressure, QuotaStatus, Settings, StatusMessage } from '../shared/types';
 import { buildSegmentPrompt, speakerFor, translationTargets, type SegmentResult } from '../shared/prompts';
@@ -13,11 +14,15 @@ const MAX_BATCH_SEC = 30;
 /** 대기열이 이보다 길어지면 오래된 것부터 버린다 (인터넷이 끊긴 경우 등) */
 const MAX_QUEUE_SEC = 180;
 const CONTEXT_SENTENCES = 3;
+/** 동시에 보낼 요청 수 (한 요청이 끝나길 기다리지 않아 지연이 줄어든다) */
+const MAX_IN_FLIGHT = 2;
+/** 받는 중 자막을 화면에 다시 그리는 최소 간격 */
+const PARTIAL_INTERVAL_MS = 120;
 const NOT_COUNTED = new Set(['rate_limit', 'daily_quota', 'auth', 'model_not_found', 'network']);
 
 export interface PipelineDeps {
   getSettings(): Settings;
-  transcribe(model: string, wav: Uint8Array, prompt: string): Promise<SegmentResult>;
+  transcribe(model: string, wav: Uint8Array, prompt: string, onPartial?: (partial: SegmentResult) => void): Promise<SegmentResult>;
   /** Claude 키가 없으면 null */
   getTranslator(): ((model: string, input: TranslateInput) => Promise<Record<string, string>>) | null;
   quota: QuotaTracker;
@@ -39,10 +44,11 @@ interface QueueItem {
 
 export class Pipeline {
   private queue: QueueItem[] = [];
-  private busy = false;
+  private inFlight = 0;
   private timer: unknown = null;
   private context: string[] = [];
   private exhaustedNotified = false;
+  private fatalReported = false;
   private seq = 0;
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
@@ -78,6 +84,7 @@ export class Pipeline {
 
   resetContext(): void {
     this.context = [];
+    this.fatalReported = false;
   }
 
   /** 지금 쓸 Gemini 모델. 기본 모델 한도가 끝나면 대체 모델, 둘 다 끝나면 null */
@@ -123,100 +130,124 @@ export class Pipeline {
     }, Math.max(0, delayMs));
   }
 
-  /** 다음 요청을 보낼 수 있으면 보낸다 */
+  /** 보낼 수 있는 만큼 요청을 보낸다 (최대 2개 동시) */
   async pump(): Promise<void> {
-    if (this.busy || this.queue.length === 0) return;
-
-    const model = this.currentModel();
-    if (!model) {
-      if (!this.exhaustedNotified) {
-        this.exhaustedNotified = true;
-        this.status('error', '오늘 무료 요청 한도를 다 썼습니다. 한도는 매일 한국 시간 오후 4~5시에 초기화됩니다. (설정에서 한도 값이나 대체 모델을 바꿀 수 있어요)');
+    while (this.inFlight < MAX_IN_FLIGHT && this.queue.length > 0) {
+      const model = this.currentModel();
+      if (!model) {
+        if (!this.exhaustedNotified) {
+          this.exhaustedNotified = true;
+          this.status('error', '오늘 무료 요청 한도를 다 썼습니다. 한도는 매일 한국 시간 오후 4~5시에 초기화됩니다. (설정에서 한도 값이나 대체 모델을 바꿀 수 있어요)');
+        }
+        this.queue = [];
+        this.publishQuota();
+        return;
       }
-      this.queue = [];
+      this.exhaustedNotified = false;
+
+      const wait = this.deps.quota.nextAllowedAt() - this.now();
+      if (wait > 0) {
+        this.schedule(wait);
+        return;
+      }
+
+      const batch = this.takeBatch();
+      this.inFlight++;
+      this.deps.quota.noteSent();
       this.publishQuota();
-      return;
+      void this.run(model, batch);
     }
-    this.exhaustedNotified = false;
+  }
 
-    const wait = this.deps.quota.nextAllowedAt() - this.now();
-    if (wait > 0) {
-      this.schedule(wait);
-      return;
-    }
-
-    const batch = this.takeBatch();
-    this.busy = true;
-    this.deps.quota.noteSent();
-    this.publishQuota();
+  private async run(model: string, batch: QueueItem): Promise<void> {
     const startedAt = this.now();
+    const seq = this.seq++;
     try {
-      await this.process(model, batch, startedAt);
+      await this.process(model, batch, startedAt, seq);
     } catch (error) {
       this.handleError(model, batch, error);
     } finally {
-      this.busy = false;
+      this.inFlight--;
       this.publishQuota();
       if (this.queue.length > 0) void this.pump();
     }
   }
 
-  private async process(model: string, batch: QueueItem, startedAt: number): Promise<void> {
+  private async process(model: string, batch: QueueItem, startedAt: number, seq: number): Promise<void> {
     const s = this.deps.getSettings();
     const translator = s.translator === 'claude' ? this.deps.getTranslator() : null;
+    const context = this.context.slice(-CONTEXT_SENTENCES);
     const prompt = buildSegmentPrompt({
       channel: batch.channel,
       studentLanguages: s.studentLanguages,
       translate: translator === null,
       glossary: s.glossary,
-      context: this.context.slice(-CONTEXT_SENTENCES),
+      context,
     });
+
+    const id = `${startedAt.toString(36)}-${seq.toString(36)}`;
+    const emit = (r: SegmentResult, translations: Record<string, string>, final: boolean) => {
+      const speaker = speakerFor(batch.channel, r.lang);
+      const lang = r.lang || (speaker === 'teacher' ? 'ko' : '');
+      this.deps.onCaption({ id, seq, ts: startedAt, speaker, lang, transcript: r.transcript, translations, latencyMs: this.now() - startedAt, final });
+    };
+    const keep = (r: SegmentResult) => {
+      const targets = translationTargets(speakerFor(batch.channel, r.lang), r.lang || 'ko', s.studentLanguages);
+      const out: Record<string, string> = {};
+      for (const t of targets) if (r.translations[t]) out[t] = r.translations[t];
+      return out;
+    };
+
+    // 받는 중: 받아쓰기·번역이 나오는 대로 (너무 자주 그리지 않게) 내보낸다
+    let lastPartial: SegmentResult | null = null;
+    let lastShownAt = 0;
+    let lastShownKey = '';
+    const onPartial = (p: SegmentResult) => {
+      if (batch.channel === 'auto' && !p.lang) return; // 누가 말했는지 알기 전에는 기다린다
+      lastPartial = p;
+      const key = p.transcript + JSON.stringify(p.translations);
+      const now = this.now();
+      if (key === lastShownKey || now - lastShownAt < PARTIAL_INTERVAL_MS) return;
+      lastShownAt = now;
+      lastShownKey = key;
+      emit(p, translator ? {} : keep(p), false);
+    };
 
     let result: SegmentResult;
     try {
-      result = await this.deps.transcribe(model, encodeWav(batch.pcm), prompt);
+      result = await this.deps.transcribe(model, encodeWav(batch.pcm), prompt, onPartial);
     } catch (error) {
       // 한도 초과(429)·잘못된 키·연결 실패는 사용량에 잡히지 않는다
       if (!(error instanceof ProviderError && NOT_COUNTED.has(error.kind))) this.deps.quota.count(model);
       throw error;
     }
     this.deps.quota.count(model);
+    if (!result.transcript && lastPartial) result = lastPartial;
     if (!result.transcript) return; // 말소리 없음
 
-    const speaker = speakerFor(batch.channel, result.lang);
-    const lang = result.lang || (speaker === 'teacher' ? 'ko' : '');
-    const targets = translationTargets(speaker, lang, s.studentLanguages);
-    let translations: Record<string, string> = {};
-
+    let translations = keep(result);
     if (translator) {
+      const speaker = speakerFor(batch.channel, result.lang);
+      const lang = result.lang || (speaker === 'teacher' ? 'ko' : '');
+      emit(result, {}, false); // 받아쓰기는 Claude 번역을 기다리지 않고 먼저 보여준다
       try {
         translations = await translator(s.claudeModel, {
           transcript: result.transcript,
           sourceLang: lang,
-          targets,
+          targets: translationTargets(speaker, lang, s.studentLanguages),
           glossary: s.glossary,
-          context: this.context.slice(-CONTEXT_SENTENCES),
+          context,
         });
       } catch (error) {
+        translations = {};
         const message = error instanceof Error ? error.message : String(error);
         this.status('warn', `Claude 번역 실패 — 원문만 표시합니다 (${message})`);
       }
-    } else {
-      for (const t of targets) if (result.translations[t]) translations[t] = result.translations[t];
     }
 
     this.context.push(result.transcript);
     if (this.context.length > CONTEXT_SENTENCES) this.context.shift();
-
-    this.deps.onCaption({
-      id: `${startedAt.toString(36)}-${(this.seq++).toString(36)}`,
-      ts: this.now(),
-      speaker,
-      lang,
-      transcript: result.transcript,
-      translations,
-      latencyMs: this.now() - startedAt,
-    });
+    emit(result, translations, true);
   }
 
   private handleError(model: string, batch: QueueItem, error: unknown): void {
@@ -250,15 +281,22 @@ export class Pipeline {
       }
       case 'auth':
         this.queue = [];
-        this.deps.onFatal(`${err.message}. 설정에서 키를 확인해 주세요.`);
+        this.fatal(`${err.message}. 설정에서 키를 확인해 주세요.`);
         break;
       case 'model_not_found':
         this.queue = [];
-        this.deps.onFatal(`'${model}' 모델을 쓸 수 없습니다. 설정에서 '연결 테스트'를 눌러 모델을 다시 고르세요.`);
+        this.fatal(`'${model}' 모델을 쓸 수 없습니다. 설정에서 '연결 테스트'를 눌러 모델을 다시 고르세요.`);
         break;
       default:
         this.status('error', `${err.message} — 이 발화는 건너뜁니다`);
     }
+  }
+
+  /** 동시에 보낸 요청이 둘 다 같은 오류로 실패해도 한 번만 알린다 */
+  private fatal(message: string): void {
+    if (this.fatalReported) return;
+    this.fatalReported = true;
+    this.deps.onFatal(message);
   }
 
   /** 맨 앞에서부터 같은 채널로 이어진 구간들을 최대 30초까지 하나로 합친다 (말한 순서 유지) */

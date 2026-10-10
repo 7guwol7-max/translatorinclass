@@ -1,7 +1,7 @@
 // 설정 저장/불러오기 (userData/settings.json). 들어온 값은 항상 검증해서 저장한다.
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_SETTINGS, type Bounds, type Settings } from '../shared/types';
+import { DEFAULT_SETTINGS, SETTINGS_VERSION, type Bounds, type OverlayAnchor, type Settings } from '../shared/types';
 import { isKnownLanguage } from '../shared/languages';
 
 const MODEL_ID = /^[a-z0-9][a-z0-9.\-]{1,80}$/;
@@ -40,9 +40,32 @@ export function sanitizeSettings(input: Partial<Settings>, base: Settings = DEFA
   s.overlayFontSize = int(input.overlayFontSize, 16, 96) ?? s.overlayFontSize;
   if (input.overlayBounds === null) s.overlayBounds = null;
   else if (isBounds(input.overlayBounds)) s.overlayBounds = input.overlayBounds;
+  if (input.overlayAnchor === null) s.overlayAnchor = null;
+  else if (typeof input.overlayAnchor === 'string' && ANCHORS.includes(input.overlayAnchor)) s.overlayAnchor = input.overlayAnchor;
+  if (input.overlayDisplayId === null) s.overlayDisplayId = null;
+  else if (typeof input.overlayDisplayId === 'number' && Number.isFinite(input.overlayDisplayId)) s.overlayDisplayId = input.overlayDisplayId;
+  s.overlayWidthPct = int(input.overlayWidthPct, 30, 100) ?? s.overlayWidthPct;
+  s.overlayHeight = int(input.overlayHeight, 100, 900) ?? s.overlayHeight;
+  if (input.latencyMode === 'fast' || input.latencyMode === 'balanced' || input.latencyMode === 'saving') s.latencyMode = input.latencyMode;
   if (typeof input.studentLinkEnabled === 'boolean') s.studentLinkEnabled = input.studentLinkEnabled;
   s.studentLinkPort = int(input.studentLinkPort, 1024, 65535) ?? s.studentLinkPort;
   return s;
+}
+
+const ANCHORS: OverlayAnchor[] = [
+  'top-left', 'top-center', 'top-right',
+  'middle-left', 'middle-center', 'middle-right',
+  'bottom-left', 'bottom-center', 'bottom-right',
+];
+
+/** 이전 버전 설정 파일을 지금 형식으로 (v0.1.0 의 분당 10회 기본값 → 15회) */
+export function migrateSettings(raw: Partial<Settings>): Partial<Settings> {
+  const out = { ...raw };
+  if (!out.settingsVersion || out.settingsVersion < 2) {
+    if (out.requestsPerMinute === 10) out.requestsPerMinute = DEFAULT_SETTINGS.requestsPerMinute;
+  }
+  out.settingsVersion = SETTINGS_VERSION;
+  return out;
 }
 
 function isBounds(v: unknown): v is Bounds {
@@ -63,7 +86,7 @@ export class SettingsStore {
     } catch {
       // 처음 실행이거나 파일이 깨졌으면 기본값
     }
-    this.current = sanitizeSettings(loaded, DEFAULT_SETTINGS);
+    this.current = { ...sanitizeSettings(migrateSettings(loaded), DEFAULT_SETTINGS), settingsVersion: SETTINGS_VERSION };
   }
 
   get(): Settings {

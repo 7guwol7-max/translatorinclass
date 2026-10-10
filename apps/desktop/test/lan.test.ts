@@ -41,7 +41,7 @@ function readEvents(url: string, until: (text: string) => boolean): Promise<stri
   });
 }
 
-const caption: Caption = { id: 'c1', ts: 1, speaker: 'teacher', lang: 'ko', transcript: '안녕하세요', translations: { vi: 'Xin chào' }, latencyMs: 900 };
+const caption: Caption = { id: 'c1', seq: 0, ts: 1, speaker: 'teacher', lang: 'ko', transcript: '안녕하세요', translations: { vi: 'Xin chào' }, latencyMs: 900, final: true };
 
 describe('StudentLinkServer', () => {
   it('토큰이 맞을 때만 학생 화면을 준다', async () => {
@@ -73,6 +73,17 @@ describe('StudentLinkServer', () => {
     server.broadcast({ ...caption, id: 'c2', transcript: '다음 문장' });
     expect(await live).toContain('다음 문장');
     expect(Math.max(...counts)).toBeGreaterThanOrEqual(1);
+  });
+
+  it('받는 중 자막이 확정되면 기록을 바꿔 둔다 (나중에 들어온 학생은 확정본만 받는다)', async () => {
+    server = new StudentLinkServer(staticDir, () => ['vi']);
+    await server.start(0, '127.0.0.1');
+    server.broadcast({ ...caption, id: 'p1', seq: 3, transcript: '오늘은', final: false });
+    server.broadcast({ ...caption, id: 'p1', seq: 3, transcript: '오늘은 광합성', final: true });
+    server.broadcast({ ...caption, id: 'p0', seq: 2, transcript: '앞 문장', final: true });
+    const text = await readEvents(server.localUrl() + 'events', (t) => (t.match(/event: caption/g) ?? []).length >= 2);
+    expect(text).not.toContain('"transcript":"오늘은"');
+    expect(text.indexOf('앞 문장')).toBeLessThan(text.indexOf('오늘은 광합성')); // seq 순서
   });
 
   it('다시 시작하면 토큰이 바뀌어 이전 링크가 막힌다', async () => {

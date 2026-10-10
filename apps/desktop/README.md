@@ -23,8 +23,9 @@ Linux/macOS 에서는 NSIS 설치 파일을 만들 때 wine 이 필요하므로 
 src/
 ├── main/                    # Electron main 프로세스
 │   ├── main.ts              # 창(컨트롤 패널·오버레이), IPC, app:// 프로토콜, 단축키
-│   ├── pipeline.ts          # 구간 대기열 → Gemini → (선택) Claude → 자막. 한 번에 1요청, 밀리면 합침
-│   ├── quota.ts             # 무료 한도: 모델별 일일 사용량(태평양 시간 자정 초기화), 분당 간격, 429 대기
+│   ├── pipeline.ts          # 구간 대기열 → Gemini(스트리밍) → (선택) Claude → 자막. 최대 2요청 동시, 밀리면 합침
+│   ├── quota.ts             # 무료 한도: 모델별 일일 사용량(태평양 시간 자정 초기화), 최근 60초 분당 한도, 429 대기
+│   ├── overlay-layout.ts    # 자막 창 위치 계산 (화면·9칸 위치·너비·높이)
 │   ├── keystore.ts          # 교사 키를 safeStorage(DPAPI)로 암호화 저장
 │   ├── settings.ts          # 설정 검증·저장
 │   ├── providers/
@@ -42,7 +43,9 @@ src/
 ```
 
 ## 동작 요약
-- 마이크 → `capture-worklet` → `StreamingDownsampler`(16kHz) → `Segmenter`(쉼 기준으로 3~12초 구간, 절약 모드 8~20초, 일정한 소음은 버림)
-- 구간 → IPC(`audio:segment`) → `Pipeline` → `GeminiClient.transcribe`(WAV inline + 지시문 + 직전 문맥 + 용어집)
+- 마이크 → `capture-worklet` → `StreamingDownsampler`(16kHz) → `Segmenter`(쉼 기준으로 자름: 빠르게 1.2~7초 / 보통 3~12초 / 절약 8~20초, 일정한 소음은 버림)
+- 구간 → IPC(`audio:segment`) → `Pipeline` → `GeminiClient.transcribe`(WAV inline + 지시문 + 직전 문맥 + 용어집, 생각 단계 최소)
+- 응답은 `generateContentStream` 으로 받아 `parsePartialJson` 으로 끊긴 JSON 을 읽고, 받아쓰기·번역이 나오는 대로 `final:false` 자막으로 먼저 보낸 뒤 `final:true` 로 확정
+- 자막은 `seq`(말한 순서)로 정렬 — 동시 요청은 끝나는 순서가 바뀔 수 있음
 - 결과 → 컨트롤 패널·오버레이·학생 링크로 전달
 - 무료 한도: SDK 자동 재시도는 끄고(`retryOptions.attempts = 1`) 파이프라인이 429 의 `retryDelay` 를 보고 기다린다

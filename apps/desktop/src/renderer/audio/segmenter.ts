@@ -1,3 +1,5 @@
+import type { LatencyMode, QuotaPressure } from '../../shared/types';
+
 // 에너지 기반 VAD + 발화 구간 묶기 (16kHz mono).
 // 말소리가 끝난 쉼에서 자르되, 너무 짧으면 다음 말과 합치고 너무 길면 강제로 자른다.
 // 무료 한도를 아끼기 위해 '절약' 모드에서는 더 길게 묶는다.
@@ -32,12 +34,28 @@ export const NORMAL_PARAMS: SegmenterParams = {
   minThresholdDb: -50,
 };
 
+/** 빠르게: 짧은 쉼에서 바로 보내 말이 끝나고 1~2초 안에 자막이 나오게 (요청 수는 늘어남) */
+export const FAST_PARAMS: SegmenterParams = {
+  ...NORMAL_PARAMS,
+  minSegmentSec: 1.2,
+  maxSegmentSec: 7,
+  pauseMs: 450,
+  flushSilenceMs: 800,
+  minSpeechSec: 0.4,
+};
+
 export const SAVING_PARAMS: SegmenterParams = {
   ...NORMAL_PARAMS,
   minSegmentSec: 8,
   maxSegmentSec: 20,
   flushSilenceMs: 3000,
 };
+
+/** 속도 설정과 무료 한도 상황으로 구간 길이를 정한다 (한도가 빠듯하면 항상 절약) */
+export function paramsFor(mode: LatencyMode, pressure: QuotaPressure): SegmenterParams {
+  if (pressure !== 'normal' || mode === 'saving') return SAVING_PARAMS;
+  return mode === 'fast' ? FAST_PARAMS : NORMAL_PARAMS;
+}
 
 const SAMPLE_RATE = 16000;
 const FRAME = 320; // 20ms
