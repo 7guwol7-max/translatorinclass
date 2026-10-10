@@ -24,6 +24,8 @@ export interface Bounds {
 
 export interface Settings {
   geminiModel: string;
+  /** 마지막 연결 테스트에서 받은, 이 키로 쓸 수 있는 모델 목록 */
+  geminiModels: string[];
   /** 일일 한도를 다 쓰면 넘어갈 모델 ('' = 사용 안 함) */
   geminiFallbackModel: string;
   translator: TranslatorEngine;
@@ -65,6 +67,7 @@ export const SETTINGS_VERSION = 2;
 
 export const DEFAULT_SETTINGS: Settings = {
   geminiModel: 'gemini-3.5-flash-lite',
+  geminiModels: [],
   geminiFallbackModel: '',
   translator: 'gemini',
   claudeModel: 'claude-opus-5-5',

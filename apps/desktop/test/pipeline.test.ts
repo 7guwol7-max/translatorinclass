@@ -227,6 +227,57 @@ describe('Pipeline', () => {
     expect(captions[0]).toMatchObject({ speaker: 'student', lang: 'vi', translations: { ko: '이해가 안 돼요' } });
   });
 
+  it('끊긴 교사 문장은 다음 구간이 이어받아 문장 전체 번역으로 같은 자막을 바꾼다', async () => {
+    const prompts: string[] = [];
+    const replies: SegmentResult[] = [
+      { lang: 'ko', transcript: '오늘은 식물이', translations: { vi: 'Hôm nay cây' }, complete: false },
+      { lang: 'ko', transcript: '햇빛으로 양분을 만들어요.', translations: { vi: 'Hôm nay cây tạo chất dinh dưỡng từ ánh sáng.' }, complete: true },
+      { lang: 'ko', transcript: '다음 문장이에요.', translations: { vi: 'Câu tiếp theo.' }, complete: true },
+    ];
+    const { pipeline, captions } = setup({}, async (_m, _w, prompt) => {
+      prompts.push(prompt);
+      return replies[prompts.length - 1];
+    });
+    for (let i = 0; i < 3; i++) {
+      pipeline.enqueue('auto', second(2));
+      await vi.runAllTimersAsync();
+    }
+    const finals = captions.filter((c) => c.final);
+    expect(prompts[1]).toContain('«오늘은 식물이»');
+    expect(prompts[2]).not.toContain('«'); // 앞 문장이 끝났으므로 이어받지 않음
+    expect(finals[1].id).toBe(finals[0].id); // 같은 자막 자리
+    expect(finals[1].transcript).toBe('오늘은 식물이 햇빛으로 양분을 만들어요.');
+    expect(finals[1].translations.vi).toBe('Hôm nay cây tạo chất dinh dưỡng từ ánh sáng.');
+    expect(finals[2].id).not.toBe(finals[0].id);
+    expect(prompts[2]).toContain('오늘은 식물이 햇빛으로 양분을 만들어요. | vi: Hôm nay cây tạo'); // 문맥엔 합친 문장과 번역
+  });
+
+  it('학생이 끼어들거나 오래 쉬면 이어받지 않는다', async () => {
+    const prompts: string[] = [];
+    const replies: SegmentResult[] = [
+      { lang: 'ko', transcript: '그러니까', translations: {}, complete: false },
+      { lang: 'vi', transcript: 'Em hỏi ạ', translations: { ko: '질문 있어요' }, complete: true },
+      { lang: 'ko', transcript: '좋아요', translations: {}, complete: false },
+      { lang: 'ko', transcript: '시작해요', translations: {}, complete: true },
+    ];
+    const { pipeline } = setup({}, async (_m, _w, prompt) => {
+      prompts.push(prompt);
+      return replies[prompts.length - 1];
+    });
+    pipeline.enqueue('auto', second(1));
+    await vi.runAllTimersAsync();
+    pipeline.enqueue('auto', second(1)); // 학생 → 교사 문장을 이어받지 않는다 (학생 말은 학생 말로)
+    await vi.runAllTimersAsync();
+    pipeline.enqueue('auto', second(1));
+    await vi.runAllTimersAsync();
+    vi.setSystemTime(Date.now() + 10_000); // 10초 쉼
+    pipeline.enqueue('auto', second(1));
+    await vi.runAllTimersAsync();
+    expect(prompts[1]).toContain('«그러니까»'); // 보내는 쪽은 이어받을 수 있다고 알려주지만
+    expect(prompts[2]).not.toContain('«'); // 학생 말이 오면 끊긴 문장은 버린다
+    expect(prompts[3]).not.toContain('«좋아요»'); // 오래 쉬면 새 문장
+  });
+
   it('Claude 번역을 켜면 Gemini 에는 받아쓰기만 요청하고 Claude 결과를 쓴다', async () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, translator: 'claude', requestsPerMinute: 60 };
     const prompts: string[] = [];

@@ -3,7 +3,7 @@
 // 두 요청이 다 바쁘거나 분당 한도에 걸려 기다리는 동안 쌓인 같은 채널 구간은 하나로 합쳐 요청 수를 줄인다.
 
 import type { Caption, Channel, QuotaPressure, QuotaStatus, Settings, StatusMessage } from '../shared/types';
-import { buildSegmentPrompt, speakerFor, translationTargets, type SegmentResult } from '../shared/prompts';
+import { buildSegmentPrompt, contextLine, speakerFor, translationTargets, type SegmentResult } from '../shared/prompts';
 import { concatWithGap, durationSec, encodeWav } from '../shared/wav';
 import { ProviderError } from './providers/errors';
 import type { QuotaTracker } from './quota';
@@ -18,6 +18,10 @@ const CONTEXT_SENTENCES = 3;
 const MAX_IN_FLIGHT = 2;
 /** 받는 중 자막을 화면에 다시 그리는 최소 간격 */
 const PARTIAL_INTERVAL_MS = 120;
+/** 끊긴 문장을 이어받을 수 있는 시간 (이보다 오래 쉬면 새 문장으로 본다) */
+const CONTINUE_WITHIN_MS = 8_000;
+/** 이어 붙일 최대 구간 수 */
+const MAX_JOINED_PARTS = 4;
 const NOT_COUNTED = new Set(['rate_limit', 'daily_quota', 'auth', 'model_not_found', 'network']);
 
 export interface PipelineDeps {
@@ -36,6 +40,16 @@ export interface PipelineDeps {
   clearTimer?: (handle: unknown) => void;
 }
 
+interface OpenSentence {
+  id: string;
+  seq: number;
+  ts: number;
+  transcript: string;
+  translations: Record<string, string>;
+  parts: number;
+  endedAt: number;
+}
+
 interface QueueItem {
   channel: Channel;
   pcm: Float32Array;
@@ -46,7 +60,9 @@ export class Pipeline {
   private queue: QueueItem[] = [];
   private inFlight = 0;
   private timer: unknown = null;
-  private context: string[] = [];
+  private context: { id: string; line: string }[] = [];
+  /** 중간에서 끊긴 마지막 교사 문장 (다음 구간이 이어받음) */
+  private open: OpenSentence | null = null;
   private exhaustedNotified = false;
   private fatalReported = false;
   private seq = 0;
@@ -84,6 +100,7 @@ export class Pipeline {
 
   resetContext(): void {
     this.context = [];
+    this.open = null;
     this.fatalReported = false;
   }
 
@@ -176,25 +193,53 @@ export class Pipeline {
   private async process(model: string, batch: QueueItem, startedAt: number, seq: number): Promise<void> {
     const s = this.deps.getSettings();
     const translator = s.translator === 'claude' ? this.deps.getTranslator() : null;
-    const context = this.context.slice(-CONTEXT_SENTENCES);
+    const context = this.context.slice(-CONTEXT_SENTENCES).map((c) => c.line);
+
+    // 앞 교사 문장이 중간에서 끊겼으면 이번 요청이 이어받아 문장 전체를 번역한다 (동시 요청이 겹쳐 받지 않게 바로 비운다)
+    const open = batch.channel !== 'student' && this.open && this.now() - this.open.endedAt < CONTINUE_WITHIN_MS ? this.open : null;
+    this.open = null;
+
     const prompt = buildSegmentPrompt({
       channel: batch.channel,
       studentLanguages: s.studentLanguages,
       translate: translator === null,
       glossary: s.glossary,
       context,
+      continuation: open?.transcript,
     });
 
-    const id = `${startedAt.toString(36)}-${seq.toString(36)}`;
+    const ownId = `${startedAt.toString(36)}-${seq.toString(36)}`;
+    /** 이어받은 경우 앞 자막 자리에 문장 전체를 다시 쓴다 */
+    const target = (r: SegmentResult) => (open && speakerFor(batch.channel, r.lang) === 'teacher' ? open : null);
     const emit = (r: SegmentResult, translations: Record<string, string>, final: boolean) => {
       const speaker = speakerFor(batch.channel, r.lang);
       const lang = r.lang || (speaker === 'teacher' ? 'ko' : '');
-      this.deps.onCaption({ id, seq, ts: startedAt, speaker, lang, transcript: r.transcript, translations, latencyMs: this.now() - startedAt, final });
+      const joined = target(r);
+      this.deps.onCaption({
+        id: joined ? joined.id : ownId,
+        seq: joined ? joined.seq : seq,
+        ts: joined ? joined.ts : startedAt,
+        speaker,
+        lang,
+        transcript: joined ? `${joined.transcript} ${r.transcript}` : r.transcript,
+        translations,
+        latencyMs: this.now() - startedAt,
+        final,
+      });
     };
     const keep = (r: SegmentResult) => {
       const targets = translationTargets(speakerFor(batch.channel, r.lang), r.lang || 'ko', s.studentLanguages);
       const out: Record<string, string> = {};
       for (const t of targets) if (r.translations[t]) out[t] = r.translations[t];
+      return out;
+    };
+    /** 받는 중에는 문장 전체 번역이 앞 번역만큼 나오기 전까지 앞 번역을 그대로 보여준다 (깜빡임 방지) */
+    const partialTranslations = (r: SegmentResult) => {
+      const fresh = keep(r);
+      const joined = target(r);
+      if (!joined) return fresh;
+      const out: Record<string, string> = { ...joined.translations };
+      for (const [l, t] of Object.entries(fresh)) if (t.length >= (out[l]?.length ?? 0) * 0.8) out[l] = t;
       return out;
     };
 
@@ -210,7 +255,7 @@ export class Pipeline {
       if (key === lastShownKey || now - lastShownAt < PARTIAL_INTERVAL_MS) return;
       lastShownAt = now;
       lastShownKey = key;
-      emit(p, translator ? {} : keep(p), false);
+      emit(p, translator ? (target(p)?.translations ?? {}) : partialTranslations(p), false);
     };
 
     let result: SegmentResult;
@@ -223,31 +268,50 @@ export class Pipeline {
     }
     this.deps.quota.count(model);
     if (!result.transcript && lastPartial) result = lastPartial;
-    if (!result.transcript) return; // 말소리 없음
+    if (!result.transcript) {
+      if (open) this.open = open; // 말소리가 없었으면 다음 구간이 이어받을 수 있게 되돌린다
+      return;
+    }
+
+    const speaker = speakerFor(batch.channel, result.lang);
+    const lang = result.lang || (speaker === 'teacher' ? 'ko' : '');
+    const joined = target(result);
+    const fullTranscript = joined ? `${joined.transcript} ${result.transcript}` : result.transcript;
 
     let translations = keep(result);
     if (translator) {
-      const speaker = speakerFor(batch.channel, result.lang);
-      const lang = result.lang || (speaker === 'teacher' ? 'ko' : '');
-      emit(result, {}, false); // 받아쓰기는 Claude 번역을 기다리지 않고 먼저 보여준다
+      emit(result, joined?.translations ?? {}, false); // 받아쓰기는 Claude 번역을 기다리지 않고 먼저 보여준다
       try {
         translations = await translator(s.claudeModel, {
-          transcript: result.transcript,
+          transcript: fullTranscript,
           sourceLang: lang,
           targets: translationTargets(speaker, lang, s.studentLanguages),
           glossary: s.glossary,
           context,
         });
       } catch (error) {
-        translations = {};
+        translations = joined?.translations ?? {};
         const message = error instanceof Error ? error.message : String(error);
         this.status('warn', `Claude 번역 실패 — 원문만 표시합니다 (${message})`);
       }
     }
-
-    this.context.push(result.transcript);
-    if (this.context.length > CONTEXT_SENTENCES) this.context.shift();
     emit(result, translations, true);
+
+    const id = joined ? joined.id : ownId;
+    this.remember(id, contextLine(fullTranscript, translations, s.overlayLanguages.length ? s.overlayLanguages : s.studentLanguages));
+    // 교사 문장이 아직 안 끝났으면 다음 구간이 이어받는다 (너무 길어지면 끊는다)
+    const parts = (joined?.parts ?? 0) + 1;
+    if (speaker === 'teacher' && result.complete === false && parts < MAX_JOINED_PARTS) {
+      this.open = { id, seq: joined ? joined.seq : seq, ts: joined ? joined.ts : startedAt, transcript: fullTranscript, translations, parts, endedAt: this.now() };
+    }
+  }
+
+  /** 문맥 기록 (이어받아 다시 쓴 문장은 같은 자리를 바꾼다) */
+  private remember(id: string, line: string): void {
+    const i = this.context.findIndex((c) => c.id === id);
+    if (i >= 0) this.context[i] = { id, line };
+    else this.context.push({ id, line });
+    while (this.context.length > CONTEXT_SENTENCES) this.context.shift();
   }
 
   private handleError(model: string, batch: QueueItem, error: unknown): void {

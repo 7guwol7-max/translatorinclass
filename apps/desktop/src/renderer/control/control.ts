@@ -15,6 +15,7 @@ import type {
 import { STUDENT_LANGUAGES, languageInfo } from '../../shared/languages';
 import { MicCapture, listMicrophones } from '../audio/capture';
 import { CLAUDE_MODELS } from '../../shared/claude-models';
+import { isLiteModel, pickQualityGeminiModel, pickRecommendedGeminiModel } from '../../shared/prompts';
 import '../global';
 
 const api = window.api;
@@ -150,6 +151,7 @@ function render(): void {
   setRadio('micMode', settings.teacherMicMode);
   setRadio('translator', settings.translator);
   setRadio('latency', settings.latencyMode);
+  setRadio('modelTier', isLiteModel(settings.geminiModel) ? 'lite' : 'flash');
   $<HTMLSelectElement>('claudeModel').value = settings.claudeModel;
   $<HTMLSelectElement>('claudeModel').disabled = settings.translator !== 'claude';
   setValue('geminiModel', settings.geminiModel);
@@ -393,6 +395,24 @@ async function toggle(): Promise<void> {
   else await start();
 }
 
+// ── 모델 고르기 ────────────────────────────────────────────────
+
+/** 연결 테스트로 받은 모델 목록에서 고른다. 목록이 없으면 이름으로 짐작한다 */
+async function chooseTier(tier: 'lite' | 'flash'): Promise<void> {
+  const list = settings.geminiModels;
+  const current = settings.geminiModel;
+  const guess = tier === 'flash' ? current.replace('-flash-lite', '-flash') : current.replace(/-flash$/, '-flash-lite');
+  const picked = list.length > 0 ? (tier === 'flash' ? pickQualityGeminiModel(list) : pickRecommendedGeminiModel(list)) : guess;
+  if (!picked) {
+    $('modelTierNote').textContent = '이 키로 쓸 수 있는 Flash 모델을 찾지 못했어요. API 키 화면에서 연결 테스트를 다시 눌러 주세요.';
+    render();
+    return;
+  }
+  await save({ geminiModel: picked });
+  $('modelTierNote').textContent = `${picked} 로 바꿨어요. AI Studio 에서 이 모델의 하루 한도를 확인해 아래 '무료 한도'에 적어 주세요.`
+    + (list.length === 0 ? ' (모델 목록이 없어 이름으로 짐작했어요 — API 키 화면에서 연결 테스트를 눌러 확인하세요)' : '');
+}
+
 // ── 자막 창 위치 ───────────────────────────────────────────────
 
 async function place(patch: { displayId?: number | null; anchor?: OverlayAnchor | null; widthPct?: number; height?: number }): Promise<void> {
@@ -481,6 +501,7 @@ function bind(): void {
   radios('micMode', (v) => void save({ teacherMicMode: v as Settings['teacherMicMode'] }));
   radios('translator', (v) => void save({ translator: v as Settings['translator'] }));
   radios('latency', (v) => void save({ latencyMode: v as LatencyMode }));
+  radios('modelTier', (v) => void chooseTier(v as 'lite' | 'flash'));
 
   $<HTMLSelectElement>('teacherMic').addEventListener('change', (e) => void save({ teacherMicId: (e.target as HTMLSelectElement).value }));
   $<HTMLSelectElement>('studentMic').addEventListener('change', (e) => void save({ studentMicId: (e.target as HTMLSelectElement).value }));

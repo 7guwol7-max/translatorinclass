@@ -34,7 +34,7 @@ describe('parsePartialJson', () => {
 describe('parsePartialSegment', () => {
   it('받는 중인 받아쓰기와 다 받은 번역만 보여준다', () => {
     const r = parsePartialSegment('{"lang":"ko","transcript":"광합성은","translations":[{"lang":"vi","text":"Quang hợp"},{"lang":"zh","te');
-    expect(r).toEqual({ lang: 'ko', transcript: '광합성은', translations: { vi: 'Quang hợp' } });
+    expect(r).toEqual({ lang: 'ko', transcript: '광합성은', translations: { vi: 'Quang hợp' }, complete: true });
   });
 
   it('받아쓰기가 아직 없으면 빈 결과', () => {

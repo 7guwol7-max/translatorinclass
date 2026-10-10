@@ -47,5 +47,7 @@ src/
 - 구간 → IPC(`audio:segment`) → `Pipeline` → `GeminiClient.transcribe`(WAV inline + 지시문 + 직전 문맥 + 용어집, 생각 단계 최소)
 - 응답은 `generateContentStream` 으로 받아 `parsePartialJson` 으로 끊긴 JSON 을 읽고, 받아쓰기·번역이 나오는 대로 `final:false` 자막으로 먼저 보낸 뒤 `final:true` 로 확정
 - 자막은 `seq`(말한 순서)로 정렬 — 동시 요청은 끝나는 순서가 바뀔 수 있음
+- 교사 문장이 중간에서 끊기면(`complete:false`) 다음 구간 요청에 그 한국어를 넘겨, 문장 전체 번역으로 같은 자막(id)을 다시 쓴다
+- 지시문: 교실 말투·언어별 호칭(STYLE_NOTES), 직역 금지, 앞 문장과 그 번역을 문맥으로
 - 결과 → 컨트롤 패널·오버레이·학생 링크로 전달
 - 무료 한도: SDK 자동 재시도는 끄고(`retryOptions.attempts = 1`) 파이프라인이 429 의 `retryDelay` 를 보고 기다린다

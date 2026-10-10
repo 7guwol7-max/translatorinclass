@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildClaudeUserPrompt,
   buildSegmentPrompt,
+  contextLine,
   parseGlossary,
   parseSegmentResult,
   parseTranslations,
   pickRecommendedGeminiModel,
+  pickQualityGeminiModel,
+  isLiteModel,
   speakerFor,
   translationTargets,
 } from '../src/shared/prompts';
@@ -35,10 +38,37 @@ describe('buildSegmentPrompt', () => {
   });
 });
 
+describe('문장 이어받기·말투', () => {
+  const base = { studentLanguages: ['vi', 'ru'], glossary: '', context: [] };
+
+  it('앞 구간이 끊겼으면 문장 전체를 번역하라고 알려준다', () => {
+    const p = buildSegmentPrompt({ ...base, channel: 'auto', translate: true, continuation: '오늘은 식물이' });
+    expect(p).toContain('«오늘은 식물이»');
+    expect(p).toContain('translate the WHOLE sentence');
+    expect(buildSegmentPrompt({ ...base, channel: 'student', translate: true, continuation: '오늘은' })).not.toContain('«오늘은»');
+  });
+
+  it('학급 언어의 교실 말투를 넣는다', () => {
+    const p = buildSegmentPrompt({ ...base, channel: 'teacher', translate: true });
+    expect(p).toContain('các em');
+    expect(p).toContain('"вы"');
+    expect(p).not.toContain('同学们');
+  });
+
+  it('문맥에 앞 문장의 번역도 넣는다', () => {
+    expect(contextLine('광합성을 배워요', { vi: 'Học quang hợp', zh: '学习' }, ['vi'])).toBe('광합성을 배워요 | vi: Học quang hợp');
+  });
+
+  it('complete=false 를 읽는다', () => {
+    expect(parseSegmentResult('{"lang":"ko","transcript":"오늘은","translations":[],"complete":false}').complete).toBe(false);
+    expect(parseSegmentResult('{"lang":"ko","transcript":"오늘은","translations":[]}').complete).toBe(true);
+  });
+});
+
 describe('parseSegmentResult', () => {
   it('언어 코드를 정리하고 원문 언어와 같은 번역은 뺀다', () => {
     const r = parseSegmentResult(JSON.stringify({ lang: 'ko-KR', transcript: ' 안녕하세요 ', translations: [{ lang: 'zh-CN', text: '你好' }, { lang: 'fil', text: 'Kumusta' }, { lang: 'ko', text: '안녕' }] }));
-    expect(r).toEqual({ lang: 'ko', transcript: '안녕하세요', translations: { zh: '你好', tl: 'Kumusta' } });
+    expect(r).toEqual({ lang: 'ko', transcript: '안녕하세요', translations: { zh: '你好', tl: 'Kumusta' }, complete: true });
   });
 
   it('코드 블록으로 감싼 JSON 도 읽는다', () => {
@@ -84,6 +114,15 @@ describe('Claude 번역 지시문·응답', () => {
 
   it('parseGlossary 는 60줄까지만', () => {
     expect(parseGlossary(Array.from({ length: 80 }, (_, i) => `a${i} = b`).join('\n'))).toHaveLength(60);
+  });
+});
+
+describe('pickQualityGeminiModel', () => {
+  it('Lite 가 아닌 Flash 최신판', () => {
+    expect(pickQualityGeminiModel(['models/gemini-3.5-flash-lite', 'models/gemini-3.5-flash', 'models/gemini-3.1-flash', 'models/gemini-3.8-flash-live', 'models/gemini-3.1-pro'])).toBe('gemini-3.5-flash');
+    expect(pickQualityGeminiModel(['gemini-3.5-flash-lite'])).toBeUndefined();
+    expect(isLiteModel('gemini-3.5-flash-lite')).toBe(true);
+    expect(isLiteModel('gemini-3.5-flash')).toBe(false);
   });
 });
 

@@ -332,6 +332,7 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
     if (provider === 'gemini') {
       const models = await geminiClient(key).listModels();
       const recommended = pickRecommendedGeminiModel(models);
+      sendAll('settings', await settings.update({ geminiModels: models }));
       const current = settings.get().geminiModel;
       const hasCurrent = models.includes(current);
       return {

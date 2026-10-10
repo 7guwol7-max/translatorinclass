@@ -14,6 +14,9 @@ export function sanitizeSettings(input: Partial<Settings>, base: Settings = DEFA
 
   const gm = str(input.geminiModel)?.trim();
   if (gm && MODEL_ID.test(gm)) s.geminiModel = gm;
+  if (Array.isArray(input.geminiModels)) {
+    s.geminiModels = input.geminiModels.filter((m): m is string => typeof m === 'string' && MODEL_ID.test(m)).slice(0, 200);
+  }
   const gf = str(input.geminiFallbackModel)?.trim();
   if (gf !== undefined && (gf === '' || MODEL_ID.test(gf))) s.geminiFallbackModel = gf;
   if (input.translator === 'gemini' || input.translator === 'claude') s.translator = input.translator;

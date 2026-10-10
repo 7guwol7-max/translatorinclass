@@ -162,6 +162,14 @@
           <p class="hint">오늘 사용량이 한도의 80%를 넘으면 자동으로 '절약'으로 바뀝니다.</p>
         </div>
         <div class="card">
+          <h3>Gemini 모델</h3>
+          <div class="option-cards two">
+            <label class="option"><input type="radio" name="modelTier" value="lite"><span><b>빠르고 넉넉하게 <em class="tag free">Flash-Lite</em></b><small>가장 빠르고 무료 하루 한도가 넉넉함</small></span></label>
+            <label class="option"><input type="radio" name="modelTier" value="flash"><span><b>더 자연스러운 번역 <em class="tag free">Flash</em></b><small>번역이 더 매끄러움. 조금 느리고 무료 하루 한도가 더 적을 수 있음</small></span></label>
+          </div>
+          <p id="modelTierNote" class="hint">바꾼 뒤 AI Studio 에서 그 모델의 하루 한도를 확인해 아래 '무료 한도'에 적어 주세요.</p>
+        </div>
+        <div class="card">
           <h3>번역 엔진</h3>
           <div class="option-cards two">
             <label class="option"><input type="radio" name="translator" value="gemini"><span><b>Gemini <em class="tag free">무료</em></b><small>받아쓰기와 번역을 한 번에. 가장 빠름</small></span></label>
@@ -171,7 +179,7 @@
         </div>
         <div class="grid-2">
           <div class="card">
-            <h3>Gemini 모델</h3>
+            <h3>모델 직접 입력 <em>고급</em></h3>
             <div class="field"><label for="geminiModel">기본 모델</label><input id="geminiModel" list="geminiModels" spellcheck="false"><datalist id="geminiModels"></datalist></div>
             <div class="field"><label for="geminiFallback">대체 모델 <em>선택</em></label><input id="geminiFallback" list="geminiModels" spellcheck="false" placeholder="기본 모델 한도를 다 쓰면 이어서 쓸 모델"></div>
             <p class="hint">API 키 화면의 '연결 테스트'를 누르면 쓸 수 있는 모델 목록이 채워집니다.</p>
