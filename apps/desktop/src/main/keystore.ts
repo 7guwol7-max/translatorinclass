@@ -12,7 +12,8 @@ export function maskKey(key: string): string {
 
 export function looksLikeKey(provider: KeyProvider, key: string): string | null {
   const k = key.trim();
-  if (k.length < 20 || /\s/.test(k)) return '키 형식이 올바르지 않습니다. 복사한 키 전체를 붙여넣어 주세요.';
+  // AI 허브 키 길이는 공개된 형식이 없어 조금 너그럽게 본다
+  if (k.length < (provider === 'aihub' ? 12 : 20) || /\s/.test(k)) return '키 형식이 올바르지 않습니다. 복사한 키 전체를 붙여넣어 주세요.';
   if (provider === 'claude' && !k.startsWith('sk-ant-')) return 'Claude API 키는 sk-ant- 로 시작합니다.';
   return null;
 }
@@ -56,7 +57,8 @@ export class KeyStore {
   }
 
   async status(): Promise<KeyStatus> {
-    const [gemini, claude] = await Promise.all([this.get('gemini'), this.get('claude')]);
-    return { gemini: gemini ? maskKey(gemini) : null, claude: claude ? maskKey(claude) : null };
+    const [gemini, claude, aihub] = await Promise.all([this.get('gemini'), this.get('claude'), this.get('aihub')]);
+    const mask = (k: string | null) => (k ? maskKey(k) : null);
+    return { gemini: mask(gemini), claude: mask(claude), aihub: mask(aihub) };
   }
 }

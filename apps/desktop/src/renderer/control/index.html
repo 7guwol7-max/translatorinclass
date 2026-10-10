@@ -38,6 +38,7 @@
       <button class="nav" data-page="mic" type="button"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg>마이크</button>
       <button class="nav" data-page="glossary" type="button"><svg viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>용어집</button>
       <button class="nav" data-page="link" type="button"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>학생 PC 링크</button>
+      <button class="nav" data-page="aihub" type="button"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>AI 허브 데이터</button>
       <button class="nav" data-page="keys" type="button"><svg viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3"/></svg>API 키<span id="keyDot" class="dot hidden"></span></button>
       <div class="sidebar-foot">
         <kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>P</kbd> 시작/멈춤<br>
@@ -229,6 +230,27 @@
         </div>
       </section>
 
+      <!-- AI 허브 -->
+      <section class="page" data-page="aihub">
+        <header class="page-head"><h1>AI 허브 데이터</h1><p>선생님의 AI 허브 키로 학급 언어의 번역·통번역 데이터를 찾아봅니다. 데이터는 AI 허브에서 이용 신청 후 쓸 수 있어요.</p></header>
+        <div id="aihubNoKey" class="card setup hidden">
+          <div><h2>AI 허브 키가 필요해요</h2><p>AI 허브에서 무료로 받은 API 키를 API 키 화면에 저장해 주세요.</p></div>
+          <button class="btn primary" type="button" data-goto="keys">키 넣으러 가기</button>
+        </div>
+        <div class="card">
+          <div class="search-row">
+            <input id="aihubQuery" type="search" placeholder="예: 러시아어 번역, 통번역, 베트남어" spellcheck="false">
+            <button id="aihubSearch" type="button" class="btn primary">검색</button>
+          </div>
+          <div id="aihubChips" class="chips small"></div>
+          <p id="aihubStatus" class="hint"></p>
+        </div>
+        <div class="aihub-grid">
+          <div id="aihubResults" class="aihub-results"></div>
+          <aside id="aihubDetail" class="card aihub-detail hidden"></aside>
+        </div>
+      </section>
+
       <!-- API 키 -->
       <section class="page" data-page="keys">
         <header class="page-head"><h1>API 키</h1><p>키는 이 PC 의 Windows 암호화 저장소에만 저장됩니다.</p></header>
@@ -253,6 +275,17 @@
               <button id="claudeClear" type="button" class="btn ghost danger">삭제</button>
             </div>
             <button type="button" class="btn link" data-open="https://platform.claude.com/">Claude 플랫폼에서 키 받기 ↗</button>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>AI 허브 <em class="tag free">선택 · 무료</em></h3><span id="aihubMasked" class="badge">없음</span></div>
+            <div class="field"><input id="aihubKey" type="password" autocomplete="off" spellcheck="false" placeholder="AI 허브 API 키 붙여넣기"></div>
+            <div class="btn-row">
+              <button id="aihubSave" type="button" class="btn primary">저장</button>
+              <button id="aihubTest" type="button" class="btn">연결 테스트</button>
+              <button id="aihubClear" type="button" class="btn ghost danger">삭제</button>
+            </div>
+            <button type="button" class="btn link" data-open="https://aihub.or.kr/devsport/apishell/list.do?currMenu=403&amp;topMenu=100">AI 허브에서 API 키 받기 ↗</button>
+            <p class="hint">학급 언어의 번역 데이터를 찾는 데 씁니다. (AI 허브 데이터는 대부분 재배포가 금지돼 이 PC 안에서만 씁니다)</p>
           </div>
         </div>
         <p id="keyResult" class="result" role="status"></p>

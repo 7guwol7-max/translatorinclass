@@ -24,6 +24,7 @@ import { QuotaTracker, nextPacificMidnight, type QuotaState, type QuotaStore } f
 import { Pipeline } from './pipeline';
 import { GeminiClient } from './providers/gemini';
 import { ClaudeTranslator } from './providers/claude';
+import { AihubClient } from './providers/aihub';
 import { ProviderError } from './providers/errors';
 import { StudentLinkServer } from './lan/server';
 import { boundsFor } from './overlay-layout';
@@ -34,7 +35,14 @@ const STUDENT_DIR = path.join(DIST, 'student');
 const APP_ORIGIN = 'app://ui';
 const MAX_SEGMENT_SAMPLES = 16000 * 60;
 
-const EXTERNAL_ALLOWLIST = ['https://aistudio.google.com/', 'https://ai.google.dev/', 'https://console.anthropic.com/', 'https://platform.claude.com/'];
+const EXTERNAL_ALLOWLIST = [
+  'https://aistudio.google.com/',
+  'https://ai.google.dev/',
+  'https://console.anthropic.com/',
+  'https://platform.claude.com/',
+  'https://aihub.or.kr/',
+  'https://www.aihub.or.kr/',
+];
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
@@ -322,7 +330,7 @@ function handle<T extends unknown[], R>(channel: string, fn: (...args: T) => R |
 }
 
 function isProvider(v: unknown): v is KeyProvider {
-  return v === 'gemini' || v === 'claude';
+  return v === 'gemini' || v === 'claude' || v === 'aihub';
 }
 
 async function testKey(provider: KeyProvider): Promise<TestResult> {
@@ -343,6 +351,10 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
           ? `연결되었습니다. 현재 모델(${current})을 쓸 수 있습니다.`
           : `연결되었습니다. 현재 모델(${current})은 이 키로 쓸 수 없어요${recommended ? ` — 추천: ${recommended}` : ''}.`,
       };
+    }
+    if (provider === 'aihub') {
+      const count = await new AihubClient(key).count('번역');
+      return { ok: true, message: `연결되었습니다. '번역' 관련 데이터셋이 ${count}개 있어요.` };
     }
     const model = settings.get().claudeModel;
     await claudeClient(key).check(model);
@@ -405,6 +417,26 @@ function registerIpc(): void {
     if (typeof url === 'string' && EXTERNAL_ALLOWLIST.some((prefix) => url.startsWith(prefix))) await shell.openExternal(url);
   });
 
+  handle('aihub:search', async (keyword: unknown) => {
+    const key = await keys.get('aihub');
+    if (!key) return { ok: false, message: 'API 키 화면에서 AI 허브 키를 먼저 저장해 주세요.', total: 0, items: [] };
+    const q = typeof keyword === 'string' ? keyword.trim().slice(0, 60) : '';
+    try {
+      const { total, items } = await new AihubClient(key).search(q, 20);
+      return { ok: true, message: `전체 ${total}개 중 ${items.length}개`, total, items };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error), total: 0, items: [] };
+    }
+  });
+  handle('aihub:detail', async (id: unknown) => {
+    const key = await keys.get('aihub');
+    if (!key) return { ok: false, message: 'AI 허브 키가 없습니다.' };
+    try {
+      return { ok: true, message: '', detail: await new AihubClient(key).detail(String(id)) };
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : String(error) };
+    }
+  });
   handle('overlay:displays', () => displayList());
   handle('overlay:place', (placement: OverlayPlacement) => {
     if (!placement || typeof placement !== 'object') throw new Error('잘못된 요청입니다');

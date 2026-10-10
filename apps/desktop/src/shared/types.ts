@@ -4,7 +4,7 @@
 export type Channel = 'teacher' | 'student' | 'auto';
 export type Speaker = 'teacher' | 'student';
 export type TranslatorEngine = 'gemini' | 'claude';
-export type KeyProvider = 'gemini' | 'claude';
+export type KeyProvider = 'gemini' | 'claude' | 'aihub';
 
 /** 자막 창을 화면의 어디에 붙일지 (3×3) */
 export type OverlayAnchor =
@@ -132,6 +132,40 @@ export interface StatusMessage {
 export interface KeyStatus {
   gemini: string | null;
   claude: string | null;
+  aihub: string | null;
+}
+
+/** AI 허브 데이터셋 (검색 결과 한 줄) */
+export interface AihubDataset {
+  id: string;
+  name: string;
+  url: string;
+  realm: string;
+  year: string;
+  types: string[];
+  fileSizeBytes: number | null;
+  downloads: string;
+}
+
+export interface AihubSection {
+  title: string;
+  items: { key: string; label: string; value: string }[];
+}
+
+export interface AihubDetail {
+  id: string;
+  name: string;
+  url: string;
+  intro: string;
+  keywords: string[];
+  sections: AihubSection[];
+}
+
+export interface AihubSearchResult {
+  ok: boolean;
+  message: string;
+  total: number;
+  items: AihubDataset[];
 }
 
 export interface StudentLinkStatus {
@@ -185,6 +219,10 @@ export interface RendererApi {
   /** 키 오류 등으로 수업 듣기가 멈췄을 때 */
   onSessionStopped(cb: (reason: string) => void): () => void;
   onOverlayMoveMode(cb: (on: boolean) => void): () => void;
+
+  // AI 허브 (교사 본인 키)
+  aihubSearch(keyword: string): Promise<AihubSearchResult>;
+  aihubDetail(id: string): Promise<{ ok: boolean; message: string; detail?: AihubDetail }>;
 
   // 자막 창 위치·모양
   getDisplays(): Promise<DisplayInfo[]>;

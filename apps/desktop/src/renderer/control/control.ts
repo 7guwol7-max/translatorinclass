@@ -1,5 +1,7 @@
 // 교사용 컨트롤 패널: 왼쪽 메뉴로 화면을 바꾸고, 수업 시작/정지·실시간 자막·설정을 다룬다
 import type {
+  AihubDataset,
+  AihubDetail,
   Caption,
   Channel,
   DisplayInfo,
@@ -395,6 +397,150 @@ async function toggle(): Promise<void> {
   else await start();
 }
 
+// ── AI 허브 데이터 ─────────────────────────────────────────────
+
+let hasAihubKey = false;
+let aihubSelected: string | null = null;
+
+function formatBytes(n: number | null): string {
+  if (!n) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = n;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)}${units[i]}`;
+}
+
+function renderAihubChips(): void {
+  const words = [
+    ...settings.studentLanguages.map((c) => `${languageInfo(c)?.ko ?? c} 번역`),
+    '통번역',
+    '다국어 번역',
+    '교육 번역',
+  ];
+  $('aihubChips').replaceChildren(
+    ...words.map((w) => {
+      const b = el('button', '', w);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        $<HTMLInputElement>('aihubQuery').value = w;
+        void aihubSearch(w);
+      });
+      return b;
+    }),
+  );
+}
+
+function datasetRow(d: AihubDataset): HTMLElement {
+  const row = el('button', `ds${d.id === aihubSelected ? ' active' : ''}`);
+  row.type = 'button';
+  row.dataset.id = d.id;
+  const icon = el('span', 'ds-icon');
+  icon.innerHTML = '<svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>';
+  const body = el('div', 'ds-body');
+  body.append(el('div', 'ds-name', d.name));
+  const meta = el('div', 'ds-meta');
+  for (const t of [d.realm, d.year && `${d.year}년`, ...d.types, formatBytes(d.fileSizeBytes), d.downloads && `다운로드 ${d.downloads}`]) {
+    if (t) meta.append(el('span', '', t));
+  }
+  body.append(meta);
+  row.append(icon, body);
+  row.addEventListener('click', () => void aihubShow(d.id));
+  return row;
+}
+
+async function aihubSearch(keyword: string): Promise<void> {
+  const status = $('aihubStatus');
+  if (!hasAihubKey) {
+    status.textContent = '먼저 API 키 화면에서 AI 허브 키를 저장해 주세요.';
+    return;
+  }
+  if (!keyword) {
+    status.textContent = '찾을 말을 입력해 주세요. 예: 러시아어 번역';
+    return;
+  }
+  status.textContent = '찾는 중…';
+  const result = await api.aihubSearch(keyword);
+  if (!result.ok) status.textContent = result.message;
+  else status.textContent = result.items.length ? `'${keyword}' 검색: ${result.message}` : `'${keyword}' 와 맞는 데이터셋이 없어요. 다른 말로 찾아 보세요.`;
+  $('aihubResults').replaceChildren(...result.items.map(datasetRow));
+}
+
+/** 파일 목록처럼 JSON 으로 온 값은 한 줄씩 읽기 쉽게 바꾼다 */
+function readableValue(value: string): string {
+  if (!/^[[{]/.test(value)) return value;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows
+      .slice(0, 40)
+      .map((r) => (r && typeof r === 'object' ? Object.values(r as Record<string, unknown>).filter((v) => v !== null && v !== '').map(String).join(' · ') : String(r)))
+      .join('\n');
+  } catch {
+    return value;
+  }
+}
+
+function renderAihubDetail(d: AihubDetail): void {
+  const box = $('aihubDetail');
+  box.replaceChildren();
+  box.append(el('h2', '', d.name));
+  if (d.keywords.length) {
+    const kw = el('div', 'ds-meta');
+    for (const k of d.keywords.slice(0, 12)) kw.append(el('span', '', k));
+    box.append(kw);
+  }
+  if (d.intro) box.append(el('p', 'intro', d.intro.length > 600 ? `${d.intro.slice(0, 600)}…` : d.intro));
+  const actions = el('div', 'btn-row');
+  const open = el('button', 'btn primary', 'AI 허브에서 열기·이용 신청 ↗');
+  open.type = 'button';
+  open.addEventListener('click', () => void api.openExternal(d.url));
+  actions.append(open);
+  box.append(actions);
+  for (const section of d.sections) {
+    const det = el('details');
+    if (section.title.includes('파일')) det.open = true;
+    det.append(el('summary', '', section.title));
+    const dl = el('dl');
+    for (const item of section.items.slice(0, 80)) dl.append(el('dt', '', item.label), el('dd', '', readableValue(item.value)));
+    det.append(dl);
+    box.append(det);
+  }
+}
+
+async function aihubShow(id: string): Promise<void> {
+  aihubSelected = id;
+  document.querySelectorAll<HTMLElement>('#aihubResults .ds').forEach((n) => n.classList.toggle('active', n.dataset.id === id));
+  const box = $('aihubDetail');
+  box.classList.remove('hidden');
+  document.querySelector('.aihub-grid')?.classList.add('with-detail');
+  box.replaceChildren(el('p', 'hint', '불러오는 중…'));
+  const result = await api.aihubDetail(id);
+  if (!result.ok || !result.detail) {
+    box.replaceChildren(el('p', 'notice warn', result.message || '불러오지 못했습니다.'));
+    return;
+  }
+  renderAihubDetail(result.detail);
+}
+
+function bindAihub(): void {
+  const input = $<HTMLInputElement>('aihubQuery');
+  $('aihubSearch').addEventListener('click', () => void aihubSearch(input.value.trim()));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') void aihubSearch(input.value.trim());
+  });
+  document.querySelector<HTMLElement>('.nav[data-page="aihub"]')?.addEventListener('click', () => {
+    renderAihubChips();
+    if (!input.value && hasAihubKey && settings.studentLanguages[0]) {
+      input.value = `${languageInfo(settings.studentLanguages[0])?.ko ?? ''} 번역`;
+      void aihubSearch(input.value);
+    }
+  });
+}
+
 // ── 모델 고르기 ────────────────────────────────────────────────
 
 /** 연결 테스트로 받은 모델 목록에서 고른다. 목록이 없으면 이름으로 짐작한다 */
@@ -440,12 +586,14 @@ function keyResult(ok: boolean, text: string): void {
 
 async function refreshKeys(): Promise<void> {
   const status = await api.getKeyStatus();
-  for (const p of ['gemini', 'claude'] as const) {
+  for (const p of ['gemini', 'claude', 'aihub'] as const) {
     const badge = $(`${p}Masked`);
     badge.textContent = status[p] ? `저장됨 · ${status[p]}` : '없음';
     badge.classList.toggle('ok', Boolean(status[p]));
   }
   $('setupCard').classList.toggle('hidden', Boolean(status.gemini));
+  $('aihubNoKey').classList.toggle('hidden', Boolean(status.aihub));
+  hasAihubKey = Boolean(status.aihub);
   $('keyDot').classList.toggle('hidden', Boolean(status.gemini));
 }
 
@@ -495,6 +643,8 @@ function bind(): void {
   $('startStop').addEventListener('click', () => void toggle());
   bindKey('gemini');
   bindKey('claude');
+  bindKey('aihub');
+  bindAihub();
 
   const radios = (name: string, fn: (value: string) => void) =>
     document.querySelectorAll<HTMLInputElement>(`input[name="${name}"]`).forEach((r) => r.addEventListener('change', () => fn(r.value)));

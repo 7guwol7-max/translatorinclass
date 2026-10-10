@@ -31,6 +31,7 @@ src/
 │   ├── providers/
 │   │   ├── gemini.ts        # 오디오 → 받아쓰기·언어 판별·번역 (JSON 스키마 응답)
 │   │   ├── claude.ts        # (선택) 문장 번역
+│   │   ├── aihub.ts         # (선택) AI 허브 데이터셋 검색·상세 (X-API-KEY, 메타데이터만)
 │   │   └── errors.ts        # 오류 분류 (분당/일일 한도, 키, 모델, 네트워크)
 │   └── lan/server.ts        # 학생 PC 링크: HTTP + SSE, 토큰 주소, 읽기 전용
 ├── preload/preload.ts       # window.api (키는 화면으로 넘기지 않음)
@@ -50,4 +51,5 @@ src/
 - 교사 문장이 중간에서 끊기면(`complete:false`) 다음 구간 요청에 그 한국어를 넘겨, 문장 전체 번역으로 같은 자막(id)을 다시 쓴다
 - 지시문: 교실 말투·언어별 호칭(STYLE_NOTES), 직역 금지, 앞 문장과 그 번역을 문맥으로
 - 결과 → 컨트롤 패널·오버레이·학생 링크로 전달
+- AI 허브: 컨트롤 패널 → IPC(`aihub:search`/`aihub:detail`) → `AihubClient`(`/mcp/dataSetList.do`, `/mcp/dataSetDetail.do`). 키는 main 프로세스에서만 쓰고, 데이터 파일은 받지 않는다
 - 무료 한도: SDK 자동 재시도는 끄고(`retryOptions.attempts = 1`) 파이프라인이 429 의 `retryDelay` 를 보고 기다린다

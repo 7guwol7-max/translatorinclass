@@ -33,6 +33,8 @@ const api: RendererApi = {
   onToggleListening: (cb) => listen<void>('session:toggle')(() => cb()),
   onOverlayMoveMode: listen('overlay:move-mode'),
   onSessionStopped: listen('session:stopped'),
+  aihubSearch: (keyword) => ipcRenderer.invoke('aihub:search', keyword),
+  aihubDetail: (id) => ipcRenderer.invoke('aihub:detail', id),
   getDisplays: () => ipcRenderer.invoke('overlay:displays'),
   onDisplays: listen('displays'),
   placeOverlay: (placement) => ipcRenderer.invoke('overlay:place', placement),

@@ -27,10 +27,11 @@ GitHub 계정 없이 누구나 받을 수 있습니다. 사용법은 [교사용 
 | --- | --- | --- |
 | `apps/desktop` (Electron) | ✅ MVP | 자막 오버레이(항상 위·투명·클릭 통과) + 컨트롤 패널 + Gemini 무료 받아쓰기·번역 + (선택) Claude 번역 + (선택) 학생 PC 링크 |
 | `services/speech-gateway` | 예정 (선택) | 로컬 Whisper 등 음성을 밖으로 보내지 않는 모드용 사이드카 |
-| `tools/aihub-mcp`, `tools/data-pipeline` | 예정 | AIHub MCP로 데이터 조사 → 평가셋·교과 용어집·미세조정 |
+| `apps/desktop` → **AI 허브 데이터** | ✅ | 교사 본인 AI 허브 키로 학급 언어 번역 데이터셋 검색·상세(메타데이터만, AIHub-MCP 와 같은 `/mcp/*.do` API) |
+| `tools/data-pipeline` | 예정 | AI 허브 데이터로 평가셋·교과 용어집 (교사 PC 로컬 전용, 재배포 금지) |
 
 ## API 키
 
-- **Gemini·Claude 키**: 선생님이 앱 설정 화면에 직접 넣습니다. 교사 PC 의 Windows 암호화 저장소(DPAPI)에만 저장되고, 저장소나 설치 파일에는 들어가지 않습니다.
+- **Gemini·Claude·AI 허브 키**: 선생님이 앱 설정 화면에 직접 넣습니다. 교사 PC 의 Windows 암호화 저장소(DPAPI)에만 저장되고, 저장소나 설치 파일에는 들어가지 않습니다.
 - **개발용 키**: `.env.example`을 복사해 `.env`를 만들고 값을 채웁니다. `.env`는 커밋하지 않습니다.
   `AIHUB_API_KEY`는 개발·데이터 파이프라인 전용이며 앱 배포물에 넣지 않습니다.
