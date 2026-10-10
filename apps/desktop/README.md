@@ -14,8 +14,8 @@ Linux/macOS 에서는 NSIS 설치 파일을 만들 때 wine 이 필요하므로 
 
 ## 새 버전 배포 (누구나 받을 수 있는 Release)
 1. `package.json` 의 `version` 을 올린다 (예: `0.1.1`)
-2. 커밋 후 같은 버전의 태그를 올린다: `git tag v0.1.1 && git push origin v0.1.1`
-3. GitHub Actions 가 Windows 에서 설치판·설치 없는 판을 만들어 Release 에 붙인다.
+2. 기본 브랜치에 푸시한다 (또는 `v0.1.1` 태그를 올린다)
+3. GitHub Actions 가 Windows 에서 설치판·설치 없는 판을 만들고, 그 버전의 Release(`v0.1.1`)가 없으면 새로 만들어 붙인다.
    파일 이름이 버전과 상관없이 같아서 `releases/latest/download/ClassroomInterpreter-Setup.exe` 링크가 항상 최신판을 가리킨다.
 
 ## 구조

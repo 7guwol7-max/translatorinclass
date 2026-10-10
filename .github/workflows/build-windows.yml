@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main, 'claude/**']
-    # v0.1.0 같은 태그를 올리면 누구나 받을 수 있는 Release 를 만든다
+    # v0.1.0 같은 태그를 올려도 Release 를 만든다
     tags: ['v*']
     paths: ['apps/desktop/**', '.github/workflows/build-windows.yml']
   pull_request:
@@ -63,8 +63,10 @@ jobs:
             apps/desktop/release/*.zip
           if-no-files-found: error
 
+  # 기본 브랜치에 새 버전(apps/desktop/package.json 의 version)이 올라오면
+  # 누구나 받을 수 있는 Release(v<버전>)를 만들고 설치 파일을 붙인다. 이미 있는 버전이면 건너뛴다.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     needs: windows-installer
     runs-on: ubuntu-latest
     permissions:
@@ -75,18 +77,21 @@ jobs:
         with:
           name: ClassroomInterpreter-Windows
           path: out
-      - name: 앱 버전과 태그가 같은지 확인
-        run: |
-          version="$(node -p "require('./apps/desktop/package.json').version")"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "태그($GITHUB_REF_NAME)와 apps/desktop/package.json 버전(v$version)이 다릅니다" >&2
-            exit 1
-          fi
       - name: GitHub Release 만들기
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/* \
+          tag="v$(node -p "require('./apps/desktop/package.json').version")"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "태그($GITHUB_REF_NAME)와 apps/desktop/package.json 버전($tag)이 다릅니다" >&2
+            exit 1
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag 은(는) 이미 배포됐습니다. 새로 배포하려면 package.json 의 version 을 올리세요."
+            exit 0
+          fi
+          gh release create "$tag" out/* \
             --repo "$GITHUB_REPOSITORY" \
-            --title "교실 통역 $GITHUB_REF_NAME" \
+            --target "$GITHUB_SHA" \
+            --title "교실 통역 $tag" \
             --notes-file .github/release-notes.md
