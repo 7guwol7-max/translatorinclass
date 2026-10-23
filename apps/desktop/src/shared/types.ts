@@ -23,6 +23,16 @@ export interface Bounds {
 }
 
 export interface Settings {
+  /** auto: 키로 쓸 수 있는 모델 여러 개를 묶어 가장 빠른 것을 자동으로 / manual: geminiModel(+대체 모델)만 */
+  geminiModelMode: 'auto' | 'manual';
+  /** 자동일 때: fast = 빠르고 무료 한도가 넉넉한 Flash-Lite 우선, quality = 더 자연스러운 Flash 우선 */
+  modelPreference: 'fast' | 'quality';
+  /** 첫 응답이 늦으면 다른 모델로 한 번 더 보내 먼저 온 답을 쓴다 (무료 한도는 조금 더 씀) */
+  hedgeRequests: boolean;
+  /** 처음 설정(키·언어·마이크)을 마쳤는지 */
+  onboarded: boolean;
+  /** 학생·보호자 동의 안내를 확인했는지 */
+  consentAcknowledged: boolean;
   geminiModel: string;
   /** 마지막 연결 테스트에서 받은, 이 키로 쓸 수 있는 모델 목록 */
   geminiModels: string[];
@@ -41,9 +51,9 @@ export interface Settings {
   studentMicId: string;
   /** teacher: 교사 마이크는 한국어 고정 / auto: 한 마이크로 교사·학생 모두 (언어로 구분) */
   teacherMicMode: 'teacher' | 'auto';
-  /** AI Studio 에서 확인한 내 무료 일일 요청 한도 */
+  /** 모델별 일일 요청 한도 기본값 (Google 이 429 로 알려 주면 그 값을 배워 씀) */
   dailyRequestLimit: number;
-  /** 분당 요청 한도 */
+  /** 모델별 분당 요청 한도 기본값 */
   requestsPerMinute: number;
   /** 한 줄에 하나: 한국어 = 번역어 (예: 광합성 = photosynthesis) */
   glossary: string;
@@ -63,10 +73,15 @@ export interface Settings {
   settingsVersion: number;
 }
 
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 export const DEFAULT_SETTINGS: Settings = {
-  geminiModel: 'gemini-3.5-flash-lite',
+  geminiModelMode: 'auto',
+  modelPreference: 'fast',
+  hedgeRequests: true,
+  onboarded: false,
+  consentAcknowledged: false,
+  geminiModel: 'gemini-3.1-flash-lite',
   geminiModels: [],
   geminiFallbackModel: '',
   translator: 'gemini',
@@ -110,16 +125,38 @@ export interface Caption {
 
 export type QuotaPressure = 'normal' | 'saving' | 'exhausted';
 
-export interface QuotaStatus {
+/** 묶음 안 모델 하나의 상태 (화면 표시용) */
+export interface ModelInfo {
+  id: string;
+  /** ready: 바로 씀 / limited: 분당 한도로 잠시 대기 / cooldown: 오류가 이어져 잠시 쉼 / exhausted: 오늘 한도 소진 / gone: 이 키로 못 씀 */
+  state: 'ready' | 'limited' | 'cooldown' | 'exhausted' | 'gone';
   used: number;
+  dailyLimit: number;
+  /** 최근 응답 시간 (ms), 잰 적이 없으면 null */
+  latencyMs: number | null;
+}
+
+export interface QuotaStatus {
+  /** 오늘 쓴 요청 (묶음 전체) */
+  used: number;
+  /** 오늘 한도 (묶음 전체, 일부는 기본값으로 짐작한 값) */
   limit: number;
+  remaining: number;
+  /** 남은 요청으로 수업을 대략 몇 분 더 할 수 있는지 */
+  minutesLeft: number;
   /** 한도 기준 날짜 (태평양 시간, Google 일일 한도 초기화 기준) */
   day: string;
+  /** 다음 초기화 시각 (ms) */
+  resetAt: number;
   pressure: QuotaPressure;
-  /** 한도 초과로 기다리는 중이면 재시도 시각 (ms) */
+  /** 모든 모델이 한도로 기다리는 중이면 다시 보낼 수 있는 시각 (ms) */
   waitUntil: number | null;
   queued: number;
+  /** 지금 주로 쓰는 모델 */
   model: string;
+  models: ModelInfo[];
+  /** 최근 자막이 말이 끝난 뒤 나오기까지 걸린 시간 (ms, 평균) */
+  recentLatencyMs: number | null;
 }
 
 export interface StatusMessage {

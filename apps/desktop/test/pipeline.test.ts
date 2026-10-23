@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Pipeline, type PipelineDeps } from '../src/main/pipeline';
 import { QuotaTracker, nextPacificMidnight, pacificDay, type QuotaState } from '../src/main/quota';
+import { ModelPool } from '../src/main/model-pool';
 import { ProviderError, classifyGeminiError } from '../src/main/providers/errors';
 import type { Caption, Settings, StatusMessage } from '../src/shared/types';
 import { DEFAULT_SETTINGS } from '../src/shared/types';
@@ -13,9 +14,16 @@ function memoryStore() {
   return { load: () => saved, save: (s: QuotaState) => { saved = JSON.parse(JSON.stringify(s)); }, peek: () => saved };
 }
 
-function setup(overrides: Partial<Settings> = {}, transcribe?: PipelineDeps['transcribe']) {
-  const settings: Settings = { ...DEFAULT_SETTINGS, requestsPerMinute: 60, dailyRequestLimit: 100, ...overrides };
+function makePool(quota: QuotaTracker, models: string[]) {
+  const pool = new ModelPool(quota, { load: () => null, save: () => undefined });
+  pool.setCandidates(models, 'fast');
+  return pool;
+}
+
+function setup(overrides: Partial<Settings> = {}, transcribe?: PipelineDeps['transcribe'], models?: string[]) {
+  const settings: Settings = { ...DEFAULT_SETTINGS, requestsPerMinute: 60, dailyRequestLimit: 100, hedgeRequests: false, ...overrides };
   const quota = new QuotaTracker(memoryStore(), () => ({ daily: settings.dailyRequestLimit, perMinute: settings.requestsPerMinute }));
+  const pool = makePool(quota, models ?? [settings.geminiModel, settings.geminiFallbackModel].filter(Boolean));
   const captions: Caption[] = [];
   const statuses: StatusMessage[] = [];
   const fatal: string[] = [];
@@ -29,12 +37,13 @@ function setup(overrides: Partial<Settings> = {}, transcribe?: PipelineDeps['tra
     transcribe: transcribe ?? defaultTranscribe,
     getTranslator: () => null,
     quota,
+    pool,
     onCaption: (c) => captions.push(c),
     onStatus: (m) => statuses.push(m),
     onQuota: () => undefined,
     onFatal: (m) => fatal.push(m),
   });
-  return { pipeline, settings, quota, captions, statuses, fatal, calls };
+  return { pipeline, settings, quota, pool, captions, statuses, fatal, calls };
 }
 
 beforeEach(() => {
@@ -280,6 +289,7 @@ describe('Pipeline', () => {
 
   it('Claude 번역을 켜면 Gemini 에는 받아쓰기만 요청하고 Claude 결과를 쓴다', async () => {
     const settings: Settings = { ...DEFAULT_SETTINGS, translator: 'claude', requestsPerMinute: 60 };
+    const claudeQuota = new QuotaTracker(memoryStore(), () => ({ daily: 100, perMinute: 60 }));
     const prompts: string[] = [];
     const translateCalls: { model: string; targets: string[] }[] = [];
     const captions: Caption[] = [];
@@ -293,7 +303,8 @@ describe('Pipeline', () => {
         translateCalls.push({ model, targets: input.targets });
         return { vi: 'Học quang hợp', zh: '学习光合作用' };
       },
-      quota: new QuotaTracker(memoryStore(), () => ({ daily: 100, perMinute: 60 })),
+      quota: claudeQuota,
+      pool: makePool(claudeQuota, [settings.geminiModel]),
       onCaption: (c) => captions.push(c),
       onStatus: () => undefined,
       onQuota: () => undefined,
@@ -328,7 +339,7 @@ describe('QuotaTracker', () => {
     store.save({ day: pacificDay(now()), used: { m: 8 } });
     const q = new QuotaTracker(store, () => ({ daily: 10, perMinute: 10 }), now);
     expect(q.used('m')).toBe(8);
-    expect(q.pressure('m')).toBe('saving');
+    expect(q.pressure(['m'])).toBe('saving');
   });
 
   it('다음 초기화 시각은 한국 시간 오후 4시(서머타임) 또는 5시', () => {

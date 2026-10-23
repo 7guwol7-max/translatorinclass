@@ -18,7 +18,8 @@ export interface SegmentPromptInput {
 export const GEMINI_SYSTEM_INSTRUCTION = [
   'You are a skilled real-time interpreter in a Korean school classroom.',
   'You receive short audio clips recorded in the classroom and reply only with JSON that matches the response schema.',
-  'Transcribe exactly what is said in the language it is spoken. Do not summarize, explain or add anything.',
+  'Transcribe exactly what is said in the language it is spoken, in that language\'s own writing system. Do not summarize, explain or add anything.',
+  'Never write non-Korean speech in Hangul (no phonetic Korean spelling of Vietnamese, Russian, Chinese, etc.). If you cannot tell what was said, return an empty transcript instead of guessing.',
   'Translate like a human interpreter, not word by word: convey the meaning in the way a native speaker of the target language would say it in class.',
   'Use clear, friendly and polite spoken language that school students understand. Keep the speaker\'s tone (questions stay questions, instructions stay instructions).',
   'Korean drops subjects and objects; fill them in naturally from context instead of translating literally. Translate Korean fillers (음, 자, 그러니까) only if they carry meaning.',
@@ -193,6 +194,20 @@ export function speakerFor(channel: Channel, lang: string): Speaker {
   if (channel === 'teacher') return 'teacher';
   if (channel === 'student') return 'student';
   return lang === 'ko' ? 'teacher' : 'student';
+}
+
+/**
+ * 자동 채널에서 모델이 언어를 잘못 붙였는지 글자로 확인한다.
+ * 한국어라고 했는데 한글이 거의 없으면 학생 말, 외국어라고 했는데 거의 한글이면 교사 말로 본다.
+ * 맞으면 null, 고쳐야 하면 다시 물어볼 채널.
+ */
+export function scriptMismatch(lang: string, transcript: string): 'teacher' | 'student' | null {
+  const letters = [...transcript].filter((ch) => /\p{L}/u.test(ch));
+  if (letters.length < 4) return null;
+  const hangul = letters.filter((ch) => /\p{Script=Hangul}/u.test(ch)).length / letters.length;
+  if (lang === 'ko' && hangul < 0.2) return 'student';
+  if (lang && lang !== 'ko' && hangul > 0.6) return 'teacher';
+  return null;
 }
 
 /** 번역해야 할 언어 목록 (Claude 번역 모드에서 사용) */

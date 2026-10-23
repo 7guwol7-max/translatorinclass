@@ -22,6 +22,8 @@ import { SettingsStore } from './settings';
 import { KeyStore, looksLikeKey } from './keystore';
 import { QuotaTracker, nextPacificMidnight, type QuotaState, type QuotaStore } from './quota';
 import { Pipeline } from './pipeline';
+import { ModelPool, type ModelStat, type PoolStore } from './model-pool';
+import { rankGeminiCandidates } from '../shared/models';
 import { GeminiClient } from './providers/gemini';
 import { ClaudeTranslator } from './providers/claude';
 import { AihubClient } from './providers/aihub';
@@ -57,6 +59,7 @@ let overlay: BrowserWindow | null = null;
 let settings: SettingsStore;
 let keys: KeyStore;
 let quota: QuotaTracker;
+let pool: ModelPool;
 let pipeline: Pipeline;
 let studentLink: StudentLinkServer;
 let listening = false;
@@ -87,6 +90,34 @@ function fileQuotaStore(dir: string): QuotaStore {
     },
     save: (state) => void fs.writeFile(file, JSON.stringify(state), 'utf8').catch(() => undefined),
   };
+}
+
+function filePoolStore(dir: string): PoolStore {
+  const file = path.join(dir, 'model-speed.json');
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return {
+    load: () => {
+      try {
+        return JSON.parse(readFileSync(file, 'utf8')) as Record<string, ModelStat>;
+      } catch {
+        return null;
+      }
+    },
+    // 요청마다 쓰지 않고 잠깐 모아서 저장한다
+    save: (stats) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void fs.writeFile(file, JSON.stringify(stats), 'utf8').catch(() => undefined), 2_000);
+    },
+  };
+}
+
+/** 설정에 맞춰 모델 묶음을 다시 정한다 (자동: 키로 쓸 수 있는 Flash 계열 여러 개 / 직접: 고른 모델 + 대체 모델) */
+function refreshPool(): void {
+  const s = settings.get();
+  const models = s.geminiModelMode === 'manual'
+    ? [s.geminiModel, s.geminiFallbackModel]
+    : rankGeminiCandidates(s.geminiModels.length > 0 ? s.geminiModels : [s.geminiModel], s.modelPreference);
+  pool.setCandidates(models.length > 0 ? models : [s.geminiModel], s.modelPreference);
 }
 
 // ── 창 ─────────────────────────────────────────────────────────
@@ -341,6 +372,18 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
       const models = await geminiClient(key).listModels();
       const recommended = pickRecommendedGeminiModel(models);
       sendAll('settings', await settings.update({ geminiModels: models }));
+      refreshPool();
+      if (settings.get().geminiModelMode === 'auto') {
+        const pooled = pool.list();
+        return {
+          ok: true,
+          models,
+          recommendedModel: recommended,
+          message: pooled.length > 0
+            ? `연결되었습니다. 모델 ${pooled.length}개를 묶어 가장 빠른 것을 자동으로 씁니다.`
+            : '연결되었지만 이 키로 쓸 수 있는 Gemini Flash 모델이 없습니다.',
+        };
+      }
       const current = settings.get().geminiModel;
       const hasCurrent = models.includes(current);
       return {
@@ -370,6 +413,7 @@ function registerIpc(): void {
     const before = settings.get();
     const next = await settings.update(patch ?? {});
     sendAll('settings', next);
+    refreshPool();
     if (before.studentLanguages.join() !== next.studentLanguages.join()) studentLink.refreshConfig();
     if (before.studentLinkEnabled !== next.studentLinkEnabled || (next.studentLinkEnabled && before.studentLinkPort !== next.studentLinkPort)) {
       if (studentLink.running && before.studentLinkPort !== next.studentLinkPort) await studentLink.stop();
@@ -399,13 +443,26 @@ function registerIpc(): void {
   });
 
   handle('session:start', async () => {
-    if (!(await keys.get('gemini'))) return { ok: false, message: '먼저 설정에서 Gemini API 키를 저장해 주세요.' };
+    const key = await keys.get('gemini');
+    if (!key) return { ok: false, message: '먼저 설정에서 Gemini API 키를 저장해 주세요.' };
     const s = settings.get();
     if (s.translator === 'claude' && !(await keys.get('claude'))) {
       return { ok: false, message: '번역 엔진이 Claude 로 되어 있지만 Claude API 키가 없습니다.' };
     }
     listening = true;
     pipeline.resetContext();
+    // 모델 목록을 아직 안 받았으면 받아 둔다 (연결 테스트를 건너뛴 경우). 무료 요청 수에는 잡히지 않는다.
+    if (s.geminiModelMode === 'auto' && s.geminiModels.length === 0) {
+      try {
+        sendAll('settings', await settings.update({ geminiModels: await geminiClient(key).listModels() }));
+        refreshPool();
+      } catch {
+        // 목록을 못 받아도 기본 모델로 시작한다
+      }
+    }
+    const first = pool.best();
+    if (first) void geminiClient(key).warmUp(first);
+    control?.webContents.send('quota', pipeline.quotaStatus());
     return { ok: true, message: '듣는 중' };
   });
   handle('session:stop', () => {
@@ -478,16 +535,19 @@ function registerIpc(): void {
 // ── 파이프라인 ─────────────────────────────────────────────────
 
 function createPipeline(): void {
-  quota = new QuotaTracker(fileQuotaStore(app.getPath('userData')), () => {
+  const userData = app.getPath('userData');
+  quota = new QuotaTracker(fileQuotaStore(userData), () => {
     const s = settings.get();
     return { daily: s.dailyRequestLimit, perMinute: s.requestsPerMinute };
   });
+  pool = new ModelPool(quota, filePoolStore(userData));
+  refreshPool();
   pipeline = new Pipeline({
     getSettings: () => settings.get(),
-    transcribe: async (model, wav, prompt) => {
+    transcribe: async (model, wav, prompt, onPartial, signal) => {
       const key = await keys.get('gemini');
       if (!key) throw new ProviderError('auth', 'Gemini API 키가 없습니다');
-      return geminiClient(key).transcribe(model, wav, prompt);
+      return geminiClient(key).transcribe(model, wav, prompt, onPartial, signal);
     },
     getTranslator: () => {
       const key = keys.peek('claude');
@@ -496,6 +556,7 @@ function createPipeline(): void {
       return (model, input) => client.translate(model, input);
     },
     quota,
+    pool,
     onCaption: (caption: Caption) => {
       sendAll('caption', caption);
       studentLink.broadcast(caption);

@@ -8,7 +8,7 @@ import {
   parseSegmentResult,
   type SegmentResult,
 } from '../../shared/prompts';
-import { classifyGeminiError } from './errors';
+import { ProviderError, classifyGeminiError } from './errors';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -28,21 +28,39 @@ export class GeminiClient {
     this.ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } } });
   }
 
-  async transcribe(model: string, wav: Uint8Array, prompt: string, onPartial?: (partial: SegmentResult) => void): Promise<SegmentResult> {
+  /** signal: 다른 모델이 먼저 답하면 이 요청을 끊는 데 쓴다 */
+  async transcribe(
+    model: string,
+    wav: Uint8Array,
+    prompt: string,
+    onPartial?: (partial: SegmentResult) => void,
+    signal?: AbortSignal,
+  ): Promise<SegmentResult> {
     const thinking = this.noThinkingOption.has(model) ? undefined : thinkingFor(model);
     try {
-      return await this.stream(model, wav, prompt, thinking, onPartial);
+      return await this.stream(model, wav, prompt, thinking, onPartial, signal);
     } catch (error) {
+      if (signal?.aborted) throw new ProviderError('aborted', '요청을 취소했습니다');
       const message = String((error as { message?: unknown })?.message ?? error);
       if (thinking && /thinking/i.test(message) && /\b400\b|INVALID_ARGUMENT|not supported/i.test(message)) {
         this.noThinkingOption.add(model);
         try {
-          return await this.stream(model, wav, prompt, undefined, onPartial);
+          return await this.stream(model, wav, prompt, undefined, onPartial, signal);
         } catch (retryError) {
+          if (signal?.aborted) throw new ProviderError('aborted', '요청을 취소했습니다');
           throw classifyGeminiError(retryError);
         }
       }
       throw classifyGeminiError(error);
+    }
+  }
+
+  /** 수업 시작 때 연결(TLS)을 미리 열어 둔다. generateContent 가 아니라 무료 요청 수에 잡히지 않는다 */
+  async warmUp(model: string): Promise<void> {
+    try {
+      await this.ai.models.get({ model });
+    } catch {
+      // 미리 열기는 실패해도 괜찮다
     }
   }
 
@@ -52,6 +70,7 @@ export class GeminiClient {
     prompt: string,
     thinking: ThinkingConfig | undefined,
     onPartial?: (partial: SegmentResult) => void,
+    signal?: AbortSignal,
   ): Promise<SegmentResult> {
     const chunks = await this.ai.models.generateContentStream({
       model,
@@ -69,10 +88,12 @@ export class GeminiClient {
         responseMimeType: 'application/json',
         responseSchema: SEGMENT_RESPONSE_SCHEMA as unknown as Schema,
         ...(thinking ? { thinkingConfig: thinking } : {}),
+        ...(signal ? { abortSignal: signal } : {}),
       },
     });
     let text = '';
     for await (const chunk of chunks) {
+      if (signal?.aborted) throw new ProviderError('aborted', '요청을 취소했습니다');
       text += chunk.text ?? '';
       if (onPartial) {
         const partial = parsePartialSegment(text);

@@ -34,13 +34,13 @@ export const NORMAL_PARAMS: SegmenterParams = {
   minThresholdDb: -50,
 };
 
-/** 빠르게: 짧은 쉼에서 바로 보내 말이 끝나고 1~2초 안에 자막이 나오게 (요청 수는 늘어남) */
+/** 빠르게: 짧은 쉼에서 바로 보내고, 쉬지 않고 말해도 5초마다 보내 자막이 늦게 쌓이지 않게 (요청 수는 늘어남) */
 export const FAST_PARAMS: SegmenterParams = {
   ...NORMAL_PARAMS,
-  minSegmentSec: 1.2,
-  maxSegmentSec: 7,
-  pauseMs: 450,
-  flushSilenceMs: 800,
+  minSegmentSec: 1,
+  maxSegmentSec: 5,
+  pauseMs: 350,
+  flushSilenceMs: 700,
   minSpeechSec: 0.4,
 };
 
@@ -62,6 +62,11 @@ const FRAME = 320; // 20ms
 const FRAME_MS = 20;
 const ONSET_FRAMES = 3; // 60ms 연속으로 커야 말 시작
 const TAIL_KEEP_FRAMES = 10; // 끝부분 무음은 200ms 만 남긴다
+/** 최대 길이에 가까워지면(이만큼 남으면) 짧은 숨 쉼에서도 자른다 — 단어 중간에서 강제로 자르는 일을 줄인다 */
+const SOFT_CUT_WINDOW_SEC = 1.5;
+const SOFT_CUT_PAUSE_MS = 120;
+/** 그래도 쉼이 없어 강제로 자를 때 자를 곳을 찾는 범위 (20ms × 20 = 0.4초) */
+const HARD_CUT_SEARCH_FRAMES = 20;
 
 export function frameDb(frame: Float32Array): number {
   let sum = 0;
@@ -167,15 +172,31 @@ export class Segmenter {
     const voicedSec = ((this.frames.length - this.trailingSilence) * FRAME_MS) / 1000;
     const totalSec = (this.frames.length * FRAME_MS) / 1000;
 
-    if (silenceMs >= p.pauseMs && voicedSec >= p.minSegmentSec) {
+    const nearMax = totalSec >= p.maxSegmentSec - SOFT_CUT_WINDOW_SEC;
+    const pauseNeeded = nearMax ? Math.min(p.pauseMs, SOFT_CUT_PAUSE_MS) : p.pauseMs;
+    if (silenceMs >= pauseNeeded && voicedSec >= p.minSegmentSec) {
       this.finish(false);
     } else if (silenceMs >= p.flushSilenceMs) {
       this.finish(false);
     } else if (totalSec >= p.maxSegmentSec) {
       const stillSpeaking = this.trailingSilence === 0;
+      // 말하는 중에 잘라야 하면 마지막 0.4초 중 가장 조용한 곳(음절 사이)에서 자르고, 뒷부분은 다음 구간 앞에 붙인다
+      const carry = stillSpeaking ? this.takeAfterQuietest() : [];
       this.finish(false);
-      if (stillSpeaking) this.begin(); // 말이 계속되면 바로 다음 구간 시작
+      if (stillSpeaking) {
+        this.begin(); // 말이 계속되면 바로 다음 구간 시작
+        this.frames.push(...carry);
+        this.speechFrames += carry.length;
+      }
     }
+  }
+
+  /** 마지막 HARD_CUT_SEARCH_FRAMES 안에서 가장 조용한 프레임 뒤를 떼어 낸다 */
+  private takeAfterQuietest(): Frame[] {
+    const from = Math.max(1, this.frames.length - HARD_CUT_SEARCH_FRAMES);
+    let quietest = this.frames.length - 1;
+    for (let i = from; i < this.frames.length; i++) if (this.frames[i].db < this.frames[quietest].db) quietest = i;
+    return this.frames.splice(quietest + 1);
   }
 
   private updateNoiseFloor(db: number): void {

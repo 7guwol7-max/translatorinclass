@@ -1,12 +1,16 @@
 // 발화 구간 대기열 → Gemini(받아쓰기·번역) → (선택) Claude 번역 → 자막.
-// 요청을 최대 2개까지 동시에 보내고, 응답은 스트리밍으로 받아 받아쓰기부터 바로 보여준다.
-// 두 요청이 다 바쁘거나 분당 한도에 걸려 기다리는 동안 쌓인 같은 채널 구간은 하나로 합쳐 요청 수를 줄인다.
+// - 요청을 최대 2개까지 동시에 보내고, 응답은 스트리밍으로 받아 받아쓰기부터 바로 보여준다.
+// - 모델 묶음(ModelPool)에서 지금 가장 빠른 모델로 보내고, 첫 글자가 늦으면 다른 모델로 한 번 더 보내
+//   먼저 온 답을 쓴다 (무료 등급은 같은 모델도 요청마다 1~13초까지 들쭉날쭉함).
+// - 한 모델이 분당/일일 한도에 걸리거나 오류가 나면 다른 모델로 바로 이어간다.
+// - 모든 모델이 바쁜 동안 쌓인 같은 채널 구간은 하나로 합쳐 요청 수를 줄인다.
 
 import type { Caption, Channel, QuotaPressure, QuotaStatus, Settings, StatusMessage } from '../shared/types';
-import { buildSegmentPrompt, contextLine, speakerFor, translationTargets, type SegmentResult } from '../shared/prompts';
+import { buildSegmentPrompt, contextLine, scriptMismatch, speakerFor, translationTargets, type SegmentResult } from '../shared/prompts';
 import { concatWithGap, durationSec, encodeWav } from '../shared/wav';
 import { ProviderError } from './providers/errors';
-import type { QuotaTracker } from './quota';
+import { nextPacificMidnight, type QuotaTracker } from './quota';
+import type { ModelPool } from './model-pool';
 import type { TranslateInput } from './providers/claude';
 
 /** 한 요청에 합칠 최대 오디오 길이 */
@@ -23,13 +27,33 @@ const CONTINUE_WITHIN_MS = 8_000;
 /** 이어 붙일 최대 구간 수 */
 const MAX_JOINED_PARTS = 4;
 const NOT_COUNTED = new Set(['rate_limit', 'daily_quota', 'auth', 'model_not_found', 'network']);
+/** 다른 모델로 바로 넘겨 다시 보낼 오류 */
+const FAILOVER = new Set(['network', 'server']);
+/** 남은 시간 계산에 쓰는, 말을 계속할 때 분당 요청 수 (잰 값이 없을 때) */
+const DEFAULT_RPM_BY_MODE = { fast: 12, balanced: 7, saving: 3 } as const;
+/** 최근 자막 지연 평균에 쓰는 개수 */
+const LATENCY_WINDOW = 8;
+/** 첫 글자가 이 안에 안 오면 그 요청은 포기하고 다른 모델로 넘긴다 (무료 등급은 가끔 30초 넘게 멈춤) */
+const FIRST_TOKEN_TIMEOUT_MS = 10_000;
+/** 한 구간에 보낼 최대 요청 수 (처음 + 한 번 더 + 오류 시 넘기기) */
+const MAX_ATTEMPTS = 3;
+/** '한 번 더 보내기'는 최근 요청의 이 비율까지만 (무료 한도를 너무 빨리 쓰지 않게) */
+const HEDGE_BUDGET = 0.25;
+const HEDGE_BUDGET_WINDOW = 20;
 
 export interface PipelineDeps {
   getSettings(): Settings;
-  transcribe(model: string, wav: Uint8Array, prompt: string, onPartial?: (partial: SegmentResult) => void): Promise<SegmentResult>;
+  transcribe(
+    model: string,
+    wav: Uint8Array,
+    prompt: string,
+    onPartial?: (partial: SegmentResult) => void,
+    signal?: AbortSignal,
+  ): Promise<SegmentResult>;
   /** Claude 키가 없으면 null */
   getTranslator(): ((model: string, input: TranslateInput) => Promise<Record<string, string>>) | null;
   quota: QuotaTracker;
+  pool: ModelPool;
   onCaption(caption: Caption): void;
   onStatus(message: StatusMessage): void;
   onQuota(status: QuotaStatus): void;
@@ -54,6 +78,10 @@ interface QueueItem {
   channel: Channel;
   pcm: Float32Array;
   retried: boolean;
+  /** 이 모델에서 실패해 다시 보내는 중이면 다른 모델을 먼저 쓴다 */
+  avoid?: string;
+  /** 구간이 들어온 시각 = 말이 끝난 직후 (자막 지연 계산 기준) */
+  enqueuedAt: number;
 }
 
 export class Pipeline {
@@ -64,8 +92,14 @@ export class Pipeline {
   /** 중간에서 끊긴 마지막 교사 문장 (다음 구간이 이어받음) */
   private open: OpenSentence | null = null;
   private exhaustedNotified = false;
+  private waitNotifiedAt = 0;
   private fatalReported = false;
   private seq = 0;
+  /** 최근 10분 동안 보낸 (첫) 요청 시각 — 남은 시간 계산용 */
+  private requestTimes: number[] = [];
+  private latencies: number[] = [];
+  /** 최근 구간마다 한 번 더 보냈는지 (true/false) */
+  private hedgeLog: boolean[] = [];
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
@@ -78,7 +112,7 @@ export class Pipeline {
 
   enqueue(channel: Channel, pcm: Float32Array): void {
     if (pcm.length === 0) return;
-    this.queue.push({ channel, pcm, retried: false });
+    this.queue.push({ channel, pcm, retried: false, enqueuedAt: this.now() });
     let total = this.queue.reduce((n, q) => n + durationSec(q.pcm), 0);
     let dropped = 0;
     while (total > MAX_QUEUE_SEC && this.queue.length > 1) {
@@ -104,30 +138,47 @@ export class Pipeline {
     this.fatalReported = false;
   }
 
-  /** 지금 쓸 Gemini 모델. 기본 모델 한도가 끝나면 대체 모델, 둘 다 끝나면 null */
+  /** 지금 주로 쓰는 모델 (화면 표시용) */
   currentModel(): string | null {
+    return this.deps.pool.best();
+  }
+
+  /** 말을 계속할 때 분당 요청 수: 수업 중 잰 값, 없으면 속도 설정에 따른 짐작 */
+  private requestsPerMinute(): number {
+    const now = this.now();
+    this.requestTimes = this.requestTimes.filter((t) => t > now - 600_000);
     const s = this.deps.getSettings();
-    if (!this.deps.quota.isExhausted(s.geminiModel)) return s.geminiModel;
-    const fallback = s.geminiFallbackModel.trim();
-    if (fallback && fallback !== s.geminiModel && !this.deps.quota.isExhausted(fallback)) return fallback;
-    return null;
+    const guess = DEFAULT_RPM_BY_MODE[s.latencyMode];
+    if (this.requestTimes.length < 10) return guess;
+    const minutes = Math.max(2, (now - this.requestTimes[0]) / 60_000);
+    // 쉬는 시간이 섞여 낮게 나오는 걸 막으려고 짐작값의 절반 아래로는 내리지 않는다
+    return Math.max(guess / 2, this.requestTimes.length / minutes);
   }
 
   quotaStatus(): QuotaStatus {
-    const s = this.deps.getSettings();
-    const model = this.currentModel();
-    const shown = model ?? s.geminiModel;
-    let pressure: QuotaPressure = model ? this.deps.quota.pressure(model) : 'exhausted';
+    const { quota, pool } = this.deps;
+    const models = pool.list();
+    const used = models.reduce((n, m) => n + quota.used(m), 0);
+    const limit = models.reduce((n, m) => n + quota.limits(m).daily, 0);
+    const remaining = models.reduce((n, m) => n + quota.remaining(m), 0);
+    let pressure: QuotaPressure = quota.pressure(models);
     // 대기열이 밀리면 구간을 길게 묶어 요청 수를 줄인다
     if (pressure === 'normal' && this.queue.length >= 3) pressure = 'saving';
+    const anyReady = models.some((m) => pool.isReady(m));
+    const latency = this.latencies.length ? Math.round(this.latencies.reduce((a, b) => a + b, 0) / this.latencies.length) : null;
     return {
-      used: this.deps.quota.used(shown),
-      limit: s.dailyRequestLimit,
-      day: this.deps.quota.day(),
+      used,
+      limit,
+      remaining,
+      minutesLeft: Math.floor(remaining / this.requestsPerMinute()),
+      day: quota.day(),
+      resetAt: nextPacificMidnight(this.now()),
       pressure,
-      waitUntil: this.deps.quota.waitUntil(),
+      waitUntil: anyReady ? null : pool.nextAvailableAt(),
       queued: this.queue.length,
-      model: shown,
+      model: pool.best() ?? this.deps.getSettings().geminiModel,
+      models: pool.info(),
+      recentLatencyMs: latency,
     };
   }
 
@@ -149,12 +200,14 @@ export class Pipeline {
 
   /** 보낼 수 있는 만큼 요청을 보낸다 (최대 2개 동시) */
   async pump(): Promise<void> {
+    const { pool } = this.deps;
     while (this.inFlight < MAX_IN_FLIGHT && this.queue.length > 0) {
-      const model = this.currentModel();
-      if (!model) {
+      if (pool.allExhausted()) {
         if (!this.exhaustedNotified) {
           this.exhaustedNotified = true;
-          this.status('error', '오늘 무료 요청 한도를 다 썼습니다. 한도는 매일 한국 시간 오후 4~5시에 초기화됩니다. (설정에서 한도 값이나 대체 모델을 바꿀 수 있어요)');
+          this.status('error', pool.list().length === 0
+            ? '이 키로 쓸 수 있는 Gemini 모델이 없습니다. API 키 화면에서 연결 테스트를 눌러 주세요.'
+            : '오늘 무료 요청 한도를 모든 모델에서 다 썼습니다. 한도는 매일 한국 시간 오후 4~5시에 초기화됩니다.');
         }
         this.queue = [];
         this.publishQuota();
@@ -162,22 +215,30 @@ export class Pipeline {
       }
       this.exhaustedNotified = false;
 
-      const wait = this.deps.quota.nextAllowedAt() - this.now();
-      if (wait > 0) {
+      const avoid = this.queue[0].avoid;
+      const model = (avoid ? pool.pick(new Set([avoid])) : null) ?? pool.pick();
+      if (!model) {
+        const at = pool.nextAvailableAt();
+        const wait = at === null ? 1_000 : Math.max(50, at - this.now());
+        if (wait > 5_000 && this.now() - this.waitNotifiedAt > 30_000) {
+          this.waitNotifiedAt = this.now();
+          this.status('warn', `모든 모델이 분당 요청 한도에 걸려 ${Math.ceil(wait / 1000)}초 기다렸다 이어서 처리합니다`);
+        }
         this.schedule(wait);
         return;
       }
 
       const batch = this.takeBatch();
       this.inFlight++;
-      this.deps.quota.noteSent();
+      this.deps.quota.noteSent(model);
+      this.requestTimes.push(this.now());
       this.publishQuota();
       void this.run(model, batch);
     }
   }
 
   private async run(model: string, batch: QueueItem): Promise<void> {
-    const startedAt = this.now();
+    const startedAt = batch.enqueuedAt;
     const seq = this.seq++;
     try {
       await this.process(model, batch, startedAt, seq);
@@ -258,16 +319,23 @@ export class Pipeline {
       emit(p, translator ? (target(p)?.translations ?? {}) : partialTranslations(p), false);
     };
 
-    let result: SegmentResult;
-    try {
-      result = await this.deps.transcribe(model, encodeWav(batch.pcm), prompt, onPartial);
-    } catch (error) {
-      // 한도 초과(429)·잘못된 키·연결 실패는 사용량에 잡히지 않는다
-      if (!(error instanceof ProviderError && NOT_COUNTED.has(error.kind))) this.deps.quota.count(model);
-      throw error;
-    }
-    this.deps.quota.count(model);
+    const wav = encodeWav(batch.pcm);
+    let result = await this.race(model, wav, prompt, onPartial);
     if (!result.transcript && lastPartial) result = lastPartial;
+    // 언어를 잘못 붙였으면(예: 베트남어 문장을 ko 로) 화자를 정해 한 번 더 물어 필요한 번역을 받는다
+    const fix = batch.channel === 'auto' && translator === null ? scriptMismatch(result.lang, result.transcript) : null;
+    if (fix) {
+      const again = buildSegmentPrompt({ channel: fix, studentLanguages: s.studentLanguages, translate: true, glossary: s.glossary, context, continuation: fix === 'teacher' ? open?.transcript : undefined });
+      const model2 = this.deps.pool.pick() ?? model;
+      this.deps.quota.noteSent(model2);
+      try {
+        const r2 = await this.race(model2, wav, again, () => undefined);
+        if (r2.transcript) result = { ...r2, lang: r2.lang || (fix === 'teacher' ? 'ko' : result.lang) };
+      } catch {
+        // 다시 묻기에 실패하면 처음 답을 그대로 쓴다
+      }
+      if (fix === 'student' && result.lang === 'ko') result = { ...result, lang: '' };
+    }
     if (!result.transcript) {
       if (open) this.open = open; // 말소리가 없었으면 다음 구간이 이어받을 수 있게 되돌린다
       return;
@@ -296,6 +364,8 @@ export class Pipeline {
       }
     }
     emit(result, translations, true);
+    this.latencies.push(this.now() - startedAt);
+    while (this.latencies.length > LATENCY_WINDOW) this.latencies.shift();
 
     const id = joined ? joined.id : ownId;
     this.remember(id, contextLine(fullTranscript, translations, s.overlayLanguages.length ? s.overlayLanguages : s.studentLanguages));
@@ -304,6 +374,132 @@ export class Pipeline {
     if (speaker === 'teacher' && result.complete === false && parts < MAX_JOINED_PARTS) {
       this.open = { id, seq: joined ? joined.seq : seq, ts: joined ? joined.ts : startedAt, transcript: fullTranscript, translations, parts, endedAt: this.now() };
     }
+  }
+
+  /**
+   * 한 구간을 받아쓴다. 첫 글자가 늦으면 다른 모델로 한 번 더 보내고(헤징), 연결·서버 오류면 다른 모델로 바로 넘긴다.
+   * 먼저 받아쓰기를 보내기 시작한 쪽의 중간 결과만 화면에 내보내고, 먼저 끝난 쪽 답을 쓰며, 나머지는 끊는다.
+   */
+  private race(primary: string, wav: Uint8Array, prompt: string, onPartial: (p: SegmentResult) => void): Promise<SegmentResult> {
+    const { pool, quota } = this.deps;
+    const s = this.deps.getSettings();
+    interface Attempt {
+      model: string;
+      ctrl: AbortController;
+      startedAt: number;
+      firstAt: number;
+      done: boolean;
+      /** 첫 글자를 기다리다 포기해 끊었는지 */
+      timedOut: boolean;
+      timer: unknown;
+    }
+    const attempts: Attempt[] = [];
+    let leader: Attempt | null = null;
+    let settled = false;
+    let hedgeTimer: unknown = null;
+
+    return new Promise<SegmentResult>((resolve, reject) => {
+      const tried = () => new Set(attempts.map((a) => a.model));
+      const finish = (fn: () => void) => {
+        settled = true;
+        if (hedgeTimer !== null) this.clearTimer(hedgeTimer);
+        for (const a of attempts) {
+          if (a.timer !== null) this.clearTimer(a.timer);
+          if (!a.done) {
+            a.ctrl.abort();
+            pool.recordSlow(a.model, this.now() - a.startedAt);
+          }
+        }
+        fn();
+      };
+      /** 실패(또는 포기)한 뒤: 다른 쪽을 기다리거나, 안 써 본 모델로 넘기거나, 끝낸다 */
+      const afterFailure = (err: ProviderError) => {
+        if (settled) return;
+        if (attempts.some((o) => !o.done)) return; // 다른 쪽 답을 기다린다
+        const next = FAILOVER.has(err.kind) && attempts.length < MAX_ATTEMPTS ? pool.pick(tried()) : null;
+        if (next) {
+          start(next, false);
+          return;
+        }
+        finish(() => reject(err));
+      };
+      const start = (model: string, counted: boolean) => {
+        const a: Attempt = { model, ctrl: new AbortController(), startedAt: this.now(), firstAt: 0, done: false, timedOut: false, timer: null };
+        attempts.push(a);
+        if (!counted) quota.noteSent(model);
+        a.timer = this.setTimer(() => {
+          a.timer = null;
+          if (settled || a.done || a.firstAt) return;
+          // 너무 오래 아무것도 안 오면 끊고 다른 모델로
+          a.timedOut = true;
+          a.done = true;
+          a.ctrl.abort();
+          quota.count(model);
+          pool.recordFailure(model);
+          pool.recordSlow(model, this.now() - a.startedAt);
+          if (leader === a) leader = null;
+          afterFailure(new ProviderError('server', 'Gemini 응답이 너무 늦습니다'));
+        }, FIRST_TOKEN_TIMEOUT_MS);
+        this.deps
+          .transcribe(model, wav, prompt, (p) => {
+            if (settled || a.done) return;
+            if (!a.firstAt) a.firstAt = this.now();
+            if (!leader) {
+              leader = a;
+              if (hedgeTimer !== null) this.clearTimer(hedgeTimer);
+              hedgeTimer = null;
+            }
+            if (leader === a) onPartial(p);
+          }, a.ctrl.signal)
+          .then(
+            (r) => {
+              if (a.timedOut) return;
+              a.done = true;
+              if (a.timer !== null) this.clearTimer(a.timer);
+              quota.count(model);
+              const total = this.now() - a.startedAt;
+              pool.recordSuccess(model, a.firstAt ? a.firstAt - a.startedAt : total, total);
+              if (!settled) finish(() => resolve(r));
+            },
+            (error: unknown) => {
+              if (a.timedOut) return;
+              a.done = true;
+              if (a.timer !== null) this.clearTimer(a.timer);
+              const err = error instanceof ProviderError ? error : new ProviderError('other', String(error));
+              if (err.kind === 'aborted') {
+                quota.count(model); // 서버는 이미 처리했을 수 있어 사용량에 넣는다
+                return;
+              }
+              // 한도 초과(429)·잘못된 키·연결 실패는 사용량에 잡히지 않는다
+              if (!NOT_COUNTED.has(err.kind)) quota.count(model);
+              if (FAILOVER.has(err.kind)) pool.recordFailure(model);
+              if (leader === a) leader = null;
+              // 연결·서버 오류면 아직 안 써 본 다른 모델로 바로 넘긴다
+              afterFailure(err);
+            },
+          );
+      };
+
+      start(primary, true);
+      const recentHedges = this.hedgeLog.filter(Boolean).length;
+      const withinBudget = recentHedges < Math.max(1, Math.floor(HEDGE_BUDGET * HEDGE_BUDGET_WINDOW));
+      const hedgeAllowed = s.hedgeRequests && withinBudget && quota.pressure(pool.list()) === 'normal';
+      let hedged = false;
+      if (hedgeAllowed) {
+        hedgeTimer = this.setTimer(() => {
+          hedgeTimer = null;
+          if (settled || leader || attempts.length !== 1) return;
+          const other = pool.pick(tried());
+          if (other) {
+            hedged = true;
+            this.hedgeLog[this.hedgeLog.length - 1] = true;
+            start(other, false);
+          }
+        }, pool.hedgeDelayMs(primary));
+      }
+      this.hedgeLog.push(hedged);
+      while (this.hedgeLog.length > HEDGE_BUDGET_WINDOW) this.hedgeLog.shift();
+    });
   }
 
   /** 문맥 기록 (이어받아 다시 쓴 문장은 같은 자리를 바꾼다) */
@@ -315,41 +511,51 @@ export class Pipeline {
   }
 
   private handleError(model: string, batch: QueueItem, error: unknown): void {
+    const { quota, pool } = this.deps;
     const err = error instanceof ProviderError ? error : new ProviderError('other', String(error));
     switch (err.kind) {
       case 'rate_limit': {
         const ms = err.retryAfterMs ?? 30_000;
-        this.deps.quota.backoff(ms);
-        this.queue.unshift(batch);
-        this.status('warn', `분당 요청 한도에 걸려 ${Math.ceil(ms / 1000)}초 기다렸다 이어서 처리합니다`);
-        this.schedule(ms);
+        if (err.quota?.scope === 'perMinute' && err.quota.limit) quota.learn(model, 'perMinute', err.quota.limit);
+        quota.backoff(model, ms);
+        this.queue.unshift(batch); // 다른 모델이 비어 있으면 바로 그쪽으로 간다
+        this.schedule(0);
         break;
       }
       case 'daily_quota': {
-        this.deps.quota.markExhausted(model);
+        if (err.quota?.limit) quota.learn(model, 'daily', err.quota.limit);
+        quota.markExhausted(model);
         this.queue.unshift(batch);
-        const next = this.currentModel();
-        if (next) this.status('warn', `${model} 의 오늘 한도를 다 써서 ${next} 로 이어갑니다`);
+        const next = pool.best();
+        if (next && !pool.allExhausted()) this.status('warn', `${model} 의 오늘 무료 한도를 다 써서 ${next} 로 이어갑니다`);
+        this.schedule(0);
         break;
       }
       case 'network':
       case 'server': {
         if (!batch.retried) {
-          this.queue.unshift({ ...batch, retried: true });
-          this.deps.quota.backoff(3_000);
-          this.schedule(3_000);
+          this.queue.unshift({ ...batch, retried: true, avoid: model });
+          this.schedule(pool.list().length > 1 ? 0 : 1_500);
         } else {
           this.status('error', `${err.message} — 이 발화는 건너뜁니다`);
+        }
+        break;
+      }
+      case 'model_not_found': {
+        pool.markGone(model);
+        if (pool.list().length === 0) {
+          this.queue = [];
+          this.fatal(`'${model}' 모델을 이 키로 쓸 수 없습니다. API 키 화면에서 '연결 테스트'를 눌러 주세요.`);
+        } else {
+          this.queue.unshift(batch);
+          this.status('warn', `'${model}' 모델을 더 이상 쓸 수 없어 다른 모델로 바꿉니다`);
+          this.schedule(0);
         }
         break;
       }
       case 'auth':
         this.queue = [];
         this.fatal(`${err.message}. 설정에서 키를 확인해 주세요.`);
-        break;
-      case 'model_not_found':
-        this.queue = [];
-        this.fatal(`'${model}' 모델을 쓸 수 없습니다. 설정에서 '연결 테스트'를 눌러 모델을 다시 고르세요.`);
         break;
       default:
         this.status('error', `${err.message} — 이 발화는 건너뜁니다`);
@@ -369,6 +575,8 @@ export class Pipeline {
     const parts: Float32Array[] = [];
     let total = 0;
     let retried = false;
+    const avoid = this.queue[0].avoid;
+    const enqueuedAt = this.queue[0].enqueuedAt;
     let taken = 0;
     for (const item of this.queue) {
       const d = durationSec(item.pcm);
@@ -379,6 +587,6 @@ export class Pipeline {
       taken++;
     }
     this.queue = this.queue.slice(taken);
-    return { channel, pcm: concatWithGap(parts), retried };
+    return { channel, pcm: concatWithGap(parts), retried, avoid, enqueuedAt };
   }
 }

@@ -12,6 +12,11 @@ export function sanitizeSettings(input: Partial<Settings>, base: Settings = DEFA
   const int = (v: unknown, min: number, max: number) =>
     typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(max, Math.max(min, v))) : undefined;
 
+  if (input.geminiModelMode === 'auto' || input.geminiModelMode === 'manual') s.geminiModelMode = input.geminiModelMode;
+  if (input.modelPreference === 'fast' || input.modelPreference === 'quality') s.modelPreference = input.modelPreference;
+  if (typeof input.hedgeRequests === 'boolean') s.hedgeRequests = input.hedgeRequests;
+  if (typeof input.onboarded === 'boolean') s.onboarded = input.onboarded;
+  if (typeof input.consentAcknowledged === 'boolean') s.consentAcknowledged = input.consentAcknowledged;
   const gm = str(input.geminiModel)?.trim();
   if (gm && MODEL_ID.test(gm)) s.geminiModel = gm;
   if (Array.isArray(input.geminiModels)) {
@@ -61,11 +66,20 @@ const ANCHORS: OverlayAnchor[] = [
   'bottom-left', 'bottom-center', 'bottom-right',
 ];
 
-/** 이전 버전 설정 파일을 지금 형식으로 (v0.1.0 의 분당 10회 기본값 → 15회) */
+/** 이전 버전 설정 파일을 지금 형식으로 */
 export function migrateSettings(raw: Partial<Settings>): Partial<Settings> {
   const out = { ...raw };
-  if (!out.settingsVersion || out.settingsVersion < 2) {
+  const version = out.settingsVersion ?? (Object.keys(raw).length > 0 ? 1 : SETTINGS_VERSION);
+  if (version < 2) {
+    // v0.1.0 의 분당 10회 기본값 → 15회
     if (out.requestsPerMinute === 10) out.requestsPerMinute = DEFAULT_SETTINGS.requestsPerMinute;
+  }
+  if (version < 3) {
+    // v0.5: 모델 하나 고정 → 여러 모델 자동. 예전에 고른 Flash/Flash-Lite 는 선호로 옮긴다.
+    // 이미 쓰던 사람은 처음 설정 화면을 다시 보지 않는다.
+    out.geminiModelMode = 'auto';
+    out.modelPreference = typeof raw.geminiModel === 'string' && raw.geminiModel.includes('flash') && !raw.geminiModel.includes('flash-lite') ? 'quality' : 'fast';
+    out.onboarded = true;
   }
   out.settingsVersion = SETTINGS_VERSION;
   return out;

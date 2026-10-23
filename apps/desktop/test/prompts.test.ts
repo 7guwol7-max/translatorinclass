@@ -7,6 +7,7 @@ import {
   parseSegmentResult,
   parseTranslations,
   pickRecommendedGeminiModel,
+  scriptMismatch,
   pickQualityGeminiModel,
   isLiteModel,
   speakerFor,
@@ -83,6 +84,15 @@ describe('parseSegmentResult', () => {
 });
 
 describe('언어·화자 판단', () => {
+  it('scriptMismatch: 붙인 언어와 글자가 맞지 않으면 다시 물을 채널', () => {
+    expect(scriptMismatch('ko', 'Thưa cô, em chưa hiểu ạ')).toBe('student');
+    expect(scriptMismatch('ko', 'Учитель, я не понял')).toBe('student');
+    expect(scriptMismatch('vi', '오늘은 광합성을 배워요')).toBe('teacher');
+    expect(scriptMismatch('ko', '오늘은 photosynthesis 를 배워요')).toBeNull();
+    expect(scriptMismatch('ru', 'Учитель')).toBeNull();
+    expect(scriptMismatch('ko', 'OK')).toBeNull(); // 너무 짧으면 판단하지 않음
+  });
+
   it('normalizeLanguageCode', () => {
     expect(normalizeLanguageCode('VI')).toBe('vi');
     expect(normalizeLanguageCode('zh_Hans')).toBe('zh');
