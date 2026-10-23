@@ -3,9 +3,11 @@
 .env.*
 !.env.example
 
-# AI 허브 원본 데이터 (재배포 금지) / MCP 서버 jar
+# AI 허브 원본 데이터 (재배포 금지) / MCP 서버 jar·빌드 폴더
 data/
 *.jar
+tools/aihub-mcp/.build/
+tools/aihub-mcp/.run/
 
 # 빌드·의존성
 node_modules/

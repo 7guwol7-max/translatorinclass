@@ -19,6 +19,7 @@ GitHub 계정 없이 누구나 받을 수 있습니다. 사용법은 [교사용 
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)
 - 데이터 조사 도구: [AIHub-MCP](https://github.com/aihub-git/AIHub-MCP) — AI 허브 **데이터셋 메타데이터** 조회용 MCP 서버
+  → Claude 에 연결하는 방법: [tools/aihub-mcp](tools/aihub-mcp/README.md) (Claude Code 클라우드 세션은 자동, Claude Desktop 은 설정 예시)
   (실시간 STT/번역 엔진이 아니라, 평가·용어집·미세조정에 쓸 데이터를 찾는 개발 단계 도구)
 
 ## 구성 요약
