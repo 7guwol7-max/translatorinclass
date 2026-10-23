@@ -60,6 +60,12 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .tool-btn.drag { cursor: grab; background: #6366f1; color: #fff; }
 .tool-btn.drag:hover { background: #7376ff; }
 .frame.dragging .tool-btn.drag { cursor: grabbing; }
+.tool-btn.listen { color: #ffb4b4; }
+.tool-btn.listen .ic-play { display: none; }
+.frame:not(.listening) .tool-btn.listen { color: #7ef0b5; }
+.frame:not(.listening) .tool-btn.listen .ic-pause { display: none; }
+.frame:not(.listening) .tool-btn.listen .ic-play { display: block; }
+.tool-btn.listen svg { fill: currentColor; stroke: none; width: 14px; height: 14px; }
 .sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.18); margin: 0 3px; }
 .grip {
   position: absolute; right: 6px; bottom: 6px; z-index: 2;

@@ -264,6 +264,11 @@ export interface RendererApi {
   onToggleListening(cb: () => void): () => void;
   /** 키 오류 등으로 수업 듣기가 멈췄을 때 */
   onSessionStopped(cb: (reason: string) => void): () => void;
+  /** 지금 듣는 중인지 (자막 창의 멈춤 버튼 표시용) */
+  getListening(): Promise<boolean>;
+  onListening(cb: (on: boolean) => void): () => void;
+  /** 자막 창에서 멈춤/다시 시작을 누름 (Ctrl+Alt+P 와 같음) */
+  requestToggleListening(): void;
   onOverlayMoveMode(cb: (on: boolean) => void): () => void;
 
   // AI 허브 (교사 본인 키)

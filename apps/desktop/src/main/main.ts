@@ -322,6 +322,12 @@ function sendAll(channel: string, payload: unknown): void {
   for (const win of [control, overlay]) if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
 
+/** 듣기 상태를 바꾸고 컨트롤 패널·자막 창에 알린다 */
+function setListening(on: boolean): void {
+  listening = on;
+  sendAll('session:listening', on);
+}
+
 function status(level: StatusMessage['level'], text: string): void {
   control?.webContents.send('status', { level, text, ts: Date.now() } satisfies StatusMessage);
 }
@@ -449,7 +455,7 @@ function registerIpc(): void {
     if (s.translator === 'claude' && !(await keys.get('claude'))) {
       return { ok: false, message: '번역 엔진이 Claude 로 되어 있지만 Claude API 키가 없습니다.' };
     }
-    listening = true;
+    setListening(true);
     pipeline.resetContext();
     // 모델 목록을 아직 안 받았으면 받아 둔다 (연결 테스트를 건너뛴 경우). 무료 요청 수에는 잡히지 않는다.
     if (s.geminiModelMode === 'auto' && s.geminiModels.length === 0) {
@@ -466,7 +472,13 @@ function registerIpc(): void {
     return { ok: true, message: '듣는 중' };
   });
   handle('session:stop', () => {
-    listening = false;
+    setListening(false);
+  });
+  handle('session:state', () => listening);
+  // 자막 창의 멈춤/다시 시작 버튼: 마이크는 컨트롤 패널이 열고 닫으므로 그쪽에 맡긴다 (Ctrl+Alt+P 와 같음)
+  ipcMain.on('session:request-toggle', (event) => {
+    if (!fromApp(event)) return;
+    control?.webContents.send('session:toggle');
   });
   handle('quota:get', () => pipeline.quotaStatus());
   handle('link:get', () => linkStatus());
@@ -564,7 +576,7 @@ function createPipeline(): void {
     onStatus: (message) => control?.webContents.send('status', message),
     onQuota: (q) => control?.webContents.send('quota', q),
     onFatal: (message) => {
-      listening = false;
+      setListening(false);
       status('error', message);
       control?.webContents.send('session:stopped', message);
     },

@@ -140,6 +140,16 @@ pointerDrag($('dragHandle'), 'move');
 pointerDrag($('resizeGrip'), 'resize');
 $('fontDown').addEventListener('click', () => api.nudgeOverlayFont(-1));
 $('fontUp').addEventListener('click', () => api.nudgeOverlayFont(1));
+// ── 듣기 멈춤 / 다시 시작 ──────────────────────────────────────
+function renderListening(on: boolean): void {
+  frame.classList.toggle('listening', on);
+  $('listenLabel').textContent = on ? '멈춤' : '다시 시작';
+  $('listenBtn').title = on ? '듣기 멈춤 (Ctrl+Alt+P) — 쉬는 시간이나 개인적인 이야기를 할 때' : '다시 듣기 시작 (Ctrl+Alt+P)';
+}
+$('listenBtn').addEventListener('click', () => api.requestToggleListening());
+api.onListening(renderListening);
+void api.getListening().then(renderListening);
+
 $('hide').addEventListener('click', () => {
   setInteractive(false);
   void api.setOverlayVisible(false);

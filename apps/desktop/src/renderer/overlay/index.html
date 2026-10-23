@@ -10,6 +10,12 @@
 <body>
   <div id="frame" class="frame">
     <div id="toolbar" class="toolbar tool" role="toolbar" aria-label="자막 창 도구">
+      <button id="listenBtn" class="tool-btn listen" type="button" title="듣기 멈춤 / 다시 시작 (Ctrl+Alt+P)">
+        <svg class="ic-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+        <svg class="ic-play" viewBox="0 0 24 24"><polygon points="7 4 20 12 7 20 7 4"/></svg>
+        <span id="listenLabel">멈춤</span>
+      </button>
+      <span class="sep"></span>
       <button id="dragHandle" class="tool-btn drag" type="button" title="누른 채 끌어서 옮기기">
         <svg viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
         <span>이동</span>

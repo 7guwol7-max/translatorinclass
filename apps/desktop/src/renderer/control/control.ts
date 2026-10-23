@@ -1,8 +1,9 @@
-// 교사용 컨트롤 패널: 왼쪽 메뉴로 화면을 바꾸고, 수업 시작/정지·실시간 자막·설정을 다룬다
+// 교사용 컨트롤 패널: 처음 설정 마법사, 수업 화면(큰 시작 버튼·실시간 자막·남은 무료 사용량), 설정 화면들
 import type {
   AihubDataset,
   AihubDetail,
   Caption,
+  ModelInfo,
   Channel,
   DisplayInfo,
   KeyProvider,
@@ -17,7 +18,6 @@ import type {
 import { STUDENT_LANGUAGES, languageInfo } from '../../shared/languages';
 import { MicCapture, listMicrophones } from '../audio/capture';
 import { CLAUDE_MODELS } from '../../shared/claude-models';
-import { isLiteModel, pickQualityGeminiModel, pickRecommendedGeminiModel } from '../../shared/prompts';
 import '../global';
 
 const api = window.api;
@@ -31,7 +31,6 @@ let overlayVisible = true;
 let displays: DisplayInfo[] = [];
 const levels = { teacher: -90, student: -90 };
 
-const SPEED_LABEL: Record<LatencyMode, string> = { fast: '빠르게', balanced: '보통', saving: '절약' };
 const ANCHOR_LABEL: Record<OverlayAnchor, string> = {
   'top-left': '위 왼쪽', 'top-center': '위 가운데', 'top-right': '위 오른쪽',
   'middle-left': '가운데 왼쪽', 'middle-center': '한가운데', 'middle-right': '가운데 오른쪽',
@@ -153,7 +152,12 @@ function render(): void {
   setRadio('micMode', settings.teacherMicMode);
   setRadio('translator', settings.translator);
   setRadio('latency', settings.latencyMode);
-  setRadio('modelTier', isLiteModel(settings.geminiModel) ? 'lite' : 'flash');
+  setRadio('modelPref', settings.modelPreference);
+  $<HTMLInputElement>('hedge').checked = settings.hedgeRequests;
+  const manual = settings.geminiModelMode === 'manual';
+  $<HTMLInputElement>('manualModel').checked = manual;
+  $<HTMLInputElement>('geminiModel').disabled = !manual;
+  $<HTMLInputElement>('geminiFallback').disabled = !manual;
   $<HTMLSelectElement>('claudeModel').value = settings.claudeModel;
   $<HTMLSelectElement>('claudeModel').disabled = settings.translator !== 'claude';
   setValue('geminiModel', settings.geminiModel);
@@ -166,7 +170,19 @@ function render(): void {
   $<HTMLSelectElement>('teacherMic').value = settings.teacherMicId;
   $<HTMLSelectElement>('studentMic').value = settings.studentMicId;
   $('meterStudentWrap').classList.toggle('hidden', !settings.studentMicId);
-  $('statSpeed').textContent = pressure === 'normal' ? SPEED_LABEL[settings.latencyMode] : `${SPEED_LABEL[settings.latencyMode]} → 절약 (한도 아낌)`;
+  renderQuick();
+  renderReady();
+}
+
+/** 수업 화면 위쪽 빠른 설정 칸 */
+function renderQuick(): void {
+  const langs = settings.studentLanguages.map((c) => languageInfo(c)?.ko ?? c);
+  $('quickLangs').textContent = langs.length > 3 ? `${langs.slice(0, 3).join(' · ')} 외 ${langs.length - 3}` : langs.join(' · ');
+  const mic = $<HTMLSelectElement>('teacherMic');
+  const micName = mic.selectedOptions[0]?.textContent || '기본 마이크';
+  $('quickMic').textContent = `${micName}${settings.teacherMicMode === 'auto' ? ' · 교사+학생' : ' · 교사 전용'}`;
+  const where = settings.overlayAnchor ? ANCHOR_LABEL[settings.overlayAnchor] : '직접 옮긴 곳';
+  $('quickOverlay').textContent = `${where}${overlayVisible ? '' : ' · 숨김'}`;
 }
 
 async function renderMics(): Promise<void> {
@@ -181,20 +197,75 @@ async function renderMics(): Promise<void> {
   student.value = settings.studentMicId;
 }
 
+let lastQuota: QuotaStatus | null = null;
+
+/** 152 → "2시간 32분", 40 → "40분" */
+function formatMinutes(m: number): string {
+  if (m <= 0) return '거의 없음';
+  if (m < 60) return `약 ${m}분`;
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  return rest >= 5 ? `약 ${h}시간 ${rest}분` : `약 ${h}시간`;
+}
+
+const MODEL_STATE: Record<ModelInfo['state'], string> = {
+  ready: '사용 가능',
+  limited: '잠시 대기 (분당 한도)',
+  cooldown: '잠시 쉼 (오류)',
+  exhausted: '오늘 다 씀',
+  gone: '이 키로 못 씀',
+};
+
 function renderQuota(q: QuotaStatus): void {
+  lastQuota = q;
   pressure = q.pressure;
-  const pct = q.limit > 0 ? Math.min(100, (q.used / q.limit) * 100) : 0;
-  $('quotaBar').style.width = `${pct}%`;
-  $('quotaText').textContent = `${q.used} / ${q.limit}`;
+  const leftPct = q.limit > 0 ? Math.max(0, Math.min(100, (q.remaining / q.limit) * 100)) : 0;
+  const reset = new Date(q.resetAt).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  const minutes = q.pressure === 'exhausted' ? '오늘 다 씀' : formatMinutes(q.minutesLeft);
+
+  $('quotaBar').style.width = `${leftPct}%`;
+  $('quotaText').textContent = minutes;
   const box = $('quota');
   box.classList.toggle('saving', q.pressure === 'saving');
   box.classList.toggle('exhausted', q.pressure === 'exhausted');
-  box.title = `모델 ${q.model}`;
-  const wait = q.waitUntil ? ` · ${Math.max(1, Math.ceil((q.waitUntil - Date.now()) / 1000))}초 대기` : '';
-  $('statQueue').textContent = `${q.queued}개${wait}`;
-  $('statModel').textContent = q.model;
-  if (settings) $('statSpeed').textContent = pressure === 'normal' ? SPEED_LABEL[settings.latencyMode] : `${SPEED_LABEL[settings.latencyMode]} → 절약 (한도 아낌)`;
+  box.title = `오늘 ${q.used.toLocaleString()} / ${q.limit.toLocaleString()}회 사용 · ${reset}에 다시 채워짐`;
+
+  const ring = $('usageRing');
+  ring.style.setProperty('--p', String(Math.round(leftPct)));
+  ring.classList.toggle('saving', q.pressure === 'saving');
+  ring.classList.toggle('exhausted', q.pressure === 'exhausted');
+  $('usagePct').textContent = `${Math.round(leftPct)}%`;
+  $('usageMinutes').textContent = minutes === '오늘 다 씀' ? minutes : `${minutes} 수업`;
+  $('usageDetail').textContent = `${q.used.toLocaleString()} / ${q.limit.toLocaleString()}회 사용 · ${reset} 초기화`;
+
+  $('usageReset').textContent = `오늘 ${reset}에 다시 채워짐`;
+  const ready = q.models.filter((m) => m.state !== 'gone' && m.state !== 'exhausted').length;
+  $('usageSummary').textContent = q.pressure === 'exhausted'
+    ? `오늘 무료 사용량을 모두 썼어요. ${reset}에 다시 채워집니다.`
+    : `지금 속도로 ${formatMinutes(q.minutesLeft)} 더 수업할 수 있어요 · 모델 ${ready}개 사용 중`;
+  $('modelRows').replaceChildren(
+    ...q.models.map((m) => {
+      const tr = el('tr', `st-${m.state}${m.id === q.model ? ' current' : ''}`);
+      const name = el('td', 'name', m.id);
+      if (m.id === q.model) name.append(el('em', 'tag free', '지금'));
+      tr.append(
+        name,
+        el('td', 'state', MODEL_STATE[m.state]),
+        el('td', 'num', `${m.used.toLocaleString()} / ${m.dailyLimit.toLocaleString()}`),
+        el('td', 'num', m.latencyMs === null ? '—' : `${(m.latencyMs / 1000).toFixed(1)}초`),
+      );
+      return tr;
+    }),
+  );
+
+  renderLatency(q.recentLatencyMs);
   applyTuning();
+}
+
+function renderLatency(ms: number | null): void {
+  const text = listening && ms !== null ? `자막이 말 끝나고 약 ${(ms / 1000).toFixed(1)}초 뒤 나와요` : '';
+  $('topLatency').textContent = text;
+  if (listening) $('heroSub').textContent = text || '말하면 몇 초 안에 자막이 떠요. 자막 창 위에 마우스를 올리면 멈출 수 있어요.';
 }
 
 function renderLink(link: StudentLinkStatus): void {
@@ -269,7 +340,6 @@ function addCaption(c: Caption): void {
     for (const [id, node] of shown) if (node === first) shown.delete(id);
     first.remove();
   }
-  if (c.final) $('statLatency').textContent = `말 끝나고 ${(c.latencyMs / 1000).toFixed(1)}초`;
   if (atBottom) log.scrollTop = log.scrollHeight;
 }
 
@@ -287,6 +357,18 @@ function addMessage(m: StatusMessage): void {
   div.append(el('time', '', new Date(m.ts).toLocaleTimeString('ko-KR')), document.createTextNode(m.text));
   box.prepend(div); // 최신이 위로
   while (box.children.length > 60) box.lastElementChild?.remove();
+  if (m.level !== 'info') toast(m.level, m.text);
+}
+
+/** 어느 화면에 있든 보이도록 오른쪽 아래에 잠깐 띄운다 (같은 문구는 겹쳐 띄우지 않음) */
+function toast(level: 'warn' | 'error' | 'ok', text: string): void {
+  const box = $('toasts');
+  if ([...box.children].some((n) => n.textContent === text)) return;
+  const t = el('div', `toast ${level}`, text);
+  box.append(t);
+  while (box.children.length > 3) box.firstElementChild?.remove();
+  setTimeout(() => t.classList.add('out'), level === 'error' ? 9000 : 6000);
+  setTimeout(() => t.remove(), level === 'error' ? 9400 : 6400);
 }
 
 function note(level: StatusMessage['level'], text: string): void {
@@ -300,12 +382,65 @@ function renderListening(): void {
   $('startStopLabel').textContent = listening ? '수업 끝내기' : '수업 시작';
   $('state').className = `status-pill ${listening ? 'on' : 'off'}`;
   $('stateText').textContent = listening ? '듣는 중' : '대기 중';
+  const big = $('bigStart');
+  big.classList.toggle('stop', listening);
+  big.setAttribute('aria-label', listening ? '수업 끝내기' : '수업 시작');
+  document.querySelector('.hero')?.classList.toggle('on', listening);
+  $('heroTitle').textContent = listening ? '듣고 있어요' : hasGeminiKey ? '수업을 시작할 준비가 됐어요' : '먼저 Gemini 키가 필요해요';
+  $('heroSub').textContent = listening
+    ? '말하면 몇 초 안에 자막이 떠요. 자막 창 위에 마우스를 올리면 멈출 수 있어요.'
+    : hasGeminiKey ? '가운데 버튼을 누르면 선생님 말이 학생 언어 자막으로 떠요.' : '처음 설정에서 무료 키를 넣으면 바로 쓸 수 있어요 (약 3분).';
+  renderLatency(lastQuota?.recentLatencyMs ?? null);
 }
+
+/** 수업을 시작하기 전에 할 일 */
+function renderReady(): void {
+  const items: { text: string; action: string; go: () => void }[] = [];
+  if (!hasGeminiKey) items.push({ text: 'Gemini 무료 키를 넣어 주세요', action: '처음 설정 열기', go: () => openWizard(1) });
+  $('readyList').classList.toggle('hidden', items.length === 0);
+  $('readyItems').replaceChildren(
+    ...items.map((i) => {
+      const row = el('div', 'ready-item');
+      const b = el('button', 'btn primary sm', i.action);
+      b.type = 'button';
+      b.addEventListener('click', i.go);
+      row.append(el('span', '', i.text), b);
+      return row;
+    }),
+  );
+}
+
+// ── 소리 크기 막대 ─────────────────────────────────────────────
+
+const BAR_COUNT = 24;
+
+function makeBars(id: string): HTMLElement[] {
+  const box = $(id);
+  const bars = Array.from({ length: BAR_COUNT }, () => el('i'));
+  box.replaceChildren(...bars);
+  return bars;
+}
+
+/** dB 를 막대 높이로. 오래된 값이 왼쪽으로 흘러가게 그린다 */
+function pushLevel(bars: HTMLElement[], history: number[], db: number): void {
+  history.push(Math.max(0, Math.min(1, (db + 65) / 50)));
+  while (history.length > bars.length) history.shift();
+  bars.forEach((b, i) => {
+    const v = history[i] ?? 0;
+    b.style.height = `${Math.round(8 + v * 92)}%`;
+  });
+}
+
+let heroBars: HTMLElement[] = [];
+const heroHistory: number[] = [];
+let frameCount = 0;
 
 function meterUpdate(): void {
   const width = (db: number) => `${Math.max(0, Math.min(100, ((db + 70) / 60) * 100))}%`;
   $('meterTeacher').style.width = width(levels.teacher);
   $('meterStudent').style.width = width(levels.student);
+  // 수업 화면의 큰 막대는 초당 15번쯤만 옮긴다
+  if (++frameCount % 4 === 0) pushLevel(heroBars, heroHistory, listening ? Math.max(levels.teacher, levels.student) : -90);
   levels.teacher -= 3;
   levels.student -= 3;
   requestAnimationFrame(meterUpdate);
@@ -365,10 +500,13 @@ async function restartCaptures(): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  await stopMicTest();
+  await stopWizMic();
   const result = await api.startSession();
   if (!result.ok) {
     note('error', result.message);
-    if (result.message.includes('키')) showPage('keys');
+    if (result.message.includes('Gemini API 키')) openWizard(1);
+    else if (result.message.includes('키')) showPage('keys');
     return;
   }
   try {
@@ -400,6 +538,7 @@ async function toggle(): Promise<void> {
 // ── AI 허브 데이터 ─────────────────────────────────────────────
 
 let hasAihubKey = false;
+let hasGeminiKey = false;
 let aihubSelected: string | null = null;
 
 function formatBytes(n: number | null): string {
@@ -563,24 +702,6 @@ function bindAihub(): void {
   });
 }
 
-// ── 모델 고르기 ────────────────────────────────────────────────
-
-/** 연결 테스트로 받은 모델 목록에서 고른다. 목록이 없으면 이름으로 짐작한다 */
-async function chooseTier(tier: 'lite' | 'flash'): Promise<void> {
-  const list = settings.geminiModels;
-  const current = settings.geminiModel;
-  const guess = tier === 'flash' ? current.replace('-flash-lite', '-flash') : current.replace(/-flash$/, '-flash-lite');
-  const picked = list.length > 0 ? (tier === 'flash' ? pickQualityGeminiModel(list) : pickRecommendedGeminiModel(list)) : guess;
-  if (!picked) {
-    $('modelTierNote').textContent = '이 키로 쓸 수 있는 Flash 모델을 찾지 못했어요. API 키 화면에서 연결 테스트를 다시 눌러 주세요.';
-    render();
-    return;
-  }
-  await save({ geminiModel: picked });
-  $('modelTierNote').textContent = `${picked} 로 바꿨어요. AI Studio 에서 이 모델의 하루 한도를 확인해 아래 '무료 한도'에 적어 주세요.`
-    + (list.length === 0 ? ' (모델 목록이 없어 이름으로 짐작했어요 — API 키 화면에서 연결 테스트를 눌러 확인하세요)' : '');
-}
-
 // ── 자막 창 위치 ───────────────────────────────────────────────
 
 async function place(patch: { displayId?: number | null; anchor?: OverlayAnchor | null; widthPct?: number; height?: number }): Promise<void> {
@@ -596,6 +717,7 @@ function renderOverlayVisible(visible: boolean): void {
   overlayVisible = visible;
   const b = $('toggleOverlay');
   b.querySelector('span')!.textContent = visible ? '자막 숨기기' : '자막 보이기';
+  if (settings) renderQuick();
 }
 
 // ── 키 ─────────────────────────────────────────────────────────
@@ -613,10 +735,14 @@ async function refreshKeys(): Promise<void> {
     badge.textContent = status[p] ? `저장됨 · ${status[p]}` : '없음';
     badge.classList.toggle('ok', Boolean(status[p]));
   }
-  $('setupCard').classList.toggle('hidden', Boolean(status.gemini));
+  hasGeminiKey = Boolean(status.gemini);
   $('aihubNoKey').classList.toggle('hidden', Boolean(status.aihub));
   hasAihubKey = Boolean(status.aihub);
   $('keyDot').classList.toggle('hidden', Boolean(status.gemini));
+  if (settings) {
+    renderReady();
+    renderListening();
+  }
 }
 
 function bindKey(provider: KeyProvider): void {
@@ -642,10 +768,11 @@ function bindKey(provider: KeyProvider): void {
     keyResult(result.ok, result.message);
     if (provider === 'gemini' && result.models) {
       $('geminiModels').replaceChildren(...result.models.map((m) => Object.assign(el('option'), { value: m })));
-      if (result.recommendedModel && !result.models.includes(settings.geminiModel)) {
+      if (settings.geminiModelMode === 'manual' && result.recommendedModel && !result.models.includes(settings.geminiModel)) {
         await save({ geminiModel: result.recommendedModel });
         keyResult(true, `${result.message} 추천 모델(${result.recommendedModel})로 바꿨습니다.`);
       }
+      renderQuota(await api.getQuota());
     }
   });
 }
@@ -653,6 +780,201 @@ function bindKey(provider: KeyProvider): void {
 /** IPC 오류 메시지에서 Electron 이 붙이는 앞부분을 뗀다 */
 function cleanError(error: unknown): string {
   return String(error instanceof Error ? error.message : error).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+}
+
+// ── 처음 설정 (마법사) ─────────────────────────────────────────
+
+const WIZ_STEPS = 5;
+let wizStep = 0;
+let wizKeyOk = false;
+let wizCapture: MicCapture | null = null;
+let wizBars: HTMLElement[] = [];
+const wizHistory: number[] = [];
+
+function openWizard(step = 0): void {
+  wizKeyOk = hasGeminiKey;
+  $('wizard').classList.remove('hidden');
+  $<HTMLInputElement>('wizConsent').checked = settings.consentAcknowledged;
+  wizGo(step);
+}
+
+async function closeWizard(done: boolean): Promise<void> {
+  await stopWizMic();
+  $('wizard').classList.add('hidden');
+  if (done || !settings.onboarded) await save({ onboarded: true });
+}
+
+function wizCanNext(): boolean {
+  if (wizStep === 0) return $<HTMLInputElement>('wizConsent').checked;
+  if (wizStep === 1) return wizKeyOk;
+  if (wizStep === 2) return settings.studentLanguages.length > 0;
+  return true;
+}
+
+function wizRender(): void {
+  document.querySelectorAll<HTMLElement>('.wiz-step').forEach((sec) => sec.classList.toggle('active', Number(sec.dataset.step) === wizStep));
+  [...$('wizSteps').children].forEach((li, i) => {
+    li.classList.toggle('done', i < wizStep);
+    li.classList.toggle('active', i === wizStep);
+  });
+  $('wizBack').classList.toggle('hidden', wizStep === 0);
+  const next = $<HTMLButtonElement>('wizNext');
+  next.textContent = wizStep === WIZ_STEPS - 1 ? '수업 화면으로' : '다음';
+  next.disabled = !wizCanNext();
+  if (wizStep === 1) {
+    const r = $('wizKeyResult');
+    if (wizKeyOk && !r.textContent) {
+      r.textContent = '저장된 키가 있어요 ✓ 그대로 다음으로 가도 됩니다.';
+      r.className = 'result ok';
+    }
+  }
+}
+
+function wizGo(step: number): void {
+  const prev = wizStep;
+  wizStep = Math.max(0, Math.min(WIZ_STEPS - 1, step));
+  if (prev === 3 && wizStep !== 3) void stopWizMic();
+  if (wizStep === 2) renderWizLangs();
+  if (wizStep === 3) void startWizMic();
+  wizRender();
+}
+
+function renderWizLangs(): void {
+  $('wizLangs').replaceChildren(
+    ...STUDENT_LANGUAGES.map((l) =>
+      chip(l.ko, l.native, settings.studentLanguages.includes(l.code), (on) => {
+        const next = on ? [...settings.studentLanguages, l.code] : settings.studentLanguages.filter((c) => c !== l.code);
+        if (next.length === 0) return renderWizLangs();
+        const overlay = on && settings.overlayLanguages.length < 3 ? [...settings.overlayLanguages, l.code] : settings.overlayLanguages.filter((c) => next.includes(c));
+        void save({ studentLanguages: next, overlayLanguages: overlay }).then(wizRender);
+      }),
+    ),
+  );
+}
+
+async function startWizMic(): Promise<void> {
+  await stopWizMic();
+  const select = $<HTMLSelectElement>('wizMic');
+  select.replaceChildren(...[...$<HTMLSelectElement>('teacherMic').options].map((o) => o.cloneNode(true) as HTMLOptionElement));
+  select.value = settings.teacherMicId;
+  setRadio('wizMicMode', settings.teacherMicMode);
+  if (listening) {
+    $('wizMicNote').textContent = '수업 중에는 마이크 시험을 건너뜁니다.';
+    return;
+  }
+  wizCapture = new MicCapture({
+    deviceId: settings.teacherMicId,
+    onSegment: () => undefined, // 시험 중에는 아무것도 보내지 않는다
+    onLevel: (db) => pushLevel(wizBars, wizHistory, db),
+  });
+  try {
+    await wizCapture.start();
+    $('wizMicNote').textContent = '';
+  } catch (error) {
+    wizCapture = null;
+    $('wizMicNote').textContent = `마이크를 열지 못했어요. 연결과 Windows 마이크 권한을 확인해 주세요. (${String(error)})`;
+  }
+}
+
+async function stopWizMic(): Promise<void> {
+  const c = wizCapture;
+  wizCapture = null;
+  if (c) await c.stop();
+}
+
+function bindWizard(): void {
+  wizBars = makeBars('wizLevel');
+  $<HTMLInputElement>('wizConsent').addEventListener('change', (e) => {
+    void save({ consentAcknowledged: (e.target as HTMLInputElement).checked });
+    wizRender();
+  });
+  $('wizBack').addEventListener('click', () => wizGo(wizStep - 1));
+  $('wizNext').addEventListener('click', () => {
+    if (!wizCanNext()) return;
+    if (wizStep === WIZ_STEPS - 1) {
+      void closeWizard(true);
+      showPage('live');
+    } else {
+      wizGo(wizStep + 1);
+    }
+  });
+  $('wizSkip').addEventListener('click', () => void closeWizard(false));
+  $('wizKeySave').addEventListener('click', async () => {
+    const input = $<HTMLInputElement>('wizKey');
+    const r = $('wizKeyResult');
+    r.className = 'result';
+    r.textContent = '저장하고 연결을 확인하는 중…';
+    try {
+      await api.saveKey('gemini', input.value);
+      input.value = '';
+      const result = await api.testKey('gemini');
+      wizKeyOk = result.ok;
+      r.className = `result ${result.ok ? 'ok' : 'err'}`;
+      r.textContent = result.ok ? `연결됐어요 ✓ ${result.message}` : result.message;
+      await refreshKeys();
+      if (result.ok) renderQuota(await api.getQuota());
+    } catch (error) {
+      wizKeyOk = false;
+      r.className = 'result err';
+      r.textContent = cleanError(error);
+    }
+    wizRender();
+  });
+  $<HTMLSelectElement>('wizMic').addEventListener('change', (e) => {
+    void save({ teacherMicId: (e.target as HTMLSelectElement).value }).then(() => startWizMic());
+  });
+  document.querySelectorAll<HTMLInputElement>('input[name="wizMicMode"]').forEach((r) =>
+    r.addEventListener('change', () => void save({ teacherMicMode: r.value as Settings['teacherMicMode'] })));
+  document.addEventListener('keydown', (e) => {
+    if ($('wizard').classList.contains('hidden')) return;
+    if (e.key === 'Escape') void closeWizard(false);
+  });
+}
+
+// ── 마이크 시험 (마이크 화면) ──────────────────────────────────
+
+let micTest: MicCapture | null = null;
+let micTestBars: HTMLElement[] = [];
+const micTestHistory: number[] = [];
+let micTestPeak = -90;
+
+async function stopMicTest(): Promise<void> {
+  const c = micTest;
+  micTest = null;
+  if (c) await c.stop();
+  $('micTest').textContent = '마이크 시험하기';
+}
+
+function bindMicTest(): void {
+  micTestBars = makeBars('micTestLevel');
+  $('micTest').addEventListener('click', async () => {
+    if (micTest) {
+      await stopMicTest();
+      $('micTestNote').textContent = micTestPeak > -45 ? '잘 들려요 ✓' : '소리가 작게 들려요. 마이크를 가까이 하거나 다른 마이크를 골라 보세요.';
+      return;
+    }
+    if (listening) {
+      $('micTestNote').textContent = '수업 중에는 위쪽 막대로 소리 크기를 볼 수 있어요.';
+      return;
+    }
+    micTestPeak = -90;
+    micTest = new MicCapture({
+      deviceId: settings.teacherMicId,
+      onSegment: () => undefined,
+      onLevel: (db) => {
+        micTestPeak = Math.max(micTestPeak, db);
+        pushLevel(micTestBars, micTestHistory, db);
+      },
+    });
+    try {
+      await micTest.start();
+      $('micTest').textContent = '시험 끝내기';
+      $('micTestNote').textContent = '아무 말이나 해 보세요.';
+    } catch (error) {
+      micTest = null;
+      $('micTestNote').textContent = `마이크를 열지 못했어요 (${String(error)})`;
+    }
+  });
 }
 
 // ── 이벤트 연결 ────────────────────────────────────────────────
@@ -663,6 +985,13 @@ function bind(): void {
   document.querySelectorAll<HTMLElement>('[data-open]').forEach((b) => b.addEventListener('click', () => void api.openExternal(b.dataset.open ?? '')));
 
   $('startStop').addEventListener('click', () => void toggle());
+  $('bigStart').addEventListener('click', () => {
+    if (!hasGeminiKey && !listening) openWizard(1);
+    else void toggle();
+  });
+  $('reopenWizard').addEventListener('click', () => openWizard(0));
+  bindWizard();
+  bindMicTest();
   bindKey('gemini');
   bindKey('claude');
   bindKey('aihub');
@@ -673,9 +1002,14 @@ function bind(): void {
   radios('micMode', (v) => void save({ teacherMicMode: v as Settings['teacherMicMode'] }));
   radios('translator', (v) => void save({ translator: v as Settings['translator'] }));
   radios('latency', (v) => void save({ latencyMode: v as LatencyMode }));
-  radios('modelTier', (v) => void chooseTier(v as 'lite' | 'flash'));
+  radios('modelPref', (v) => void save({ modelPreference: v as Settings['modelPreference'] }));
+  $<HTMLInputElement>('hedge').addEventListener('change', (e) => void save({ hedgeRequests: (e.target as HTMLInputElement).checked }));
+  $<HTMLInputElement>('manualModel').addEventListener('change', (e) => void save({ geminiModelMode: (e.target as HTMLInputElement).checked ? 'manual' : 'auto' }));
 
   $<HTMLSelectElement>('teacherMic').addEventListener('change', (e) => void save({ teacherMicId: (e.target as HTMLSelectElement).value }));
+  document.querySelectorAll<HTMLElement>('.nav').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.page !== 'mic') void stopMicTest();
+  }));
   $<HTMLSelectElement>('studentMic').addEventListener('change', (e) => void save({ studentMicId: (e.target as HTMLSelectElement).value }));
   $('refreshMics').addEventListener('click', () => void renderMics());
 
@@ -752,15 +1086,17 @@ function bind(): void {
 async function init(): Promise<void> {
   settings = await api.getSettings();
   displays = await api.getDisplays();
+  heroBars = makeBars('heroLevel');
   bind();
+  await renderMics();
   render();
   showEmptyLog();
-  renderListening();
   await refreshKeys();
+  renderListening();
   renderQuota(await api.getQuota());
   renderLink(await api.getStudentLink());
-  await renderMics();
   requestAnimationFrame(meterUpdate);
+  if (!settings.onboarded) openWizard(0);
 }
 
 void init();

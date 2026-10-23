@@ -37,9 +37,9 @@ const LATENCY_WINDOW = 8;
 const FIRST_TOKEN_TIMEOUT_MS = 10_000;
 /** 한 구간에 보낼 최대 요청 수 (처음 + 한 번 더 + 오류 시 넘기기) */
 const MAX_ATTEMPTS = 3;
-/** '한 번 더 보내기'는 최근 요청의 이 비율까지만 (무료 한도를 너무 빨리 쓰지 않게) */
+/** '한 번 더 보내기'는 최근 3분 동안 보낸 요청의 이 비율까지만 (무료 한도를 너무 빨리 쓰지 않게) */
 const HEDGE_BUDGET = 0.25;
-const HEDGE_BUDGET_WINDOW = 20;
+const HEDGE_WINDOW_MS = 180_000;
 
 export interface PipelineDeps {
   getSettings(): Settings;
@@ -98,8 +98,8 @@ export class Pipeline {
   /** 최근 10분 동안 보낸 (첫) 요청 시각 — 남은 시간 계산용 */
   private requestTimes: number[] = [];
   private latencies: number[] = [];
-  /** 최근 구간마다 한 번 더 보냈는지 (true/false) */
-  private hedgeLog: boolean[] = [];
+  /** 최근에 '한 번 더 보내기'를 한 시각 */
+  private hedgeTimes: number[] = [];
   private readonly now: () => number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
@@ -481,25 +481,27 @@ export class Pipeline {
       };
 
       start(primary, true);
-      const recentHedges = this.hedgeLog.filter(Boolean).length;
-      const withinBudget = recentHedges < Math.max(1, Math.floor(HEDGE_BUDGET * HEDGE_BUDGET_WINDOW));
-      const hedgeAllowed = s.hedgeRequests && withinBudget && quota.pressure(pool.list()) === 'normal';
-      let hedged = false;
+      const hedgeAllowed = s.hedgeRequests && quota.pressure(pool.list()) === 'normal';
       if (hedgeAllowed) {
         hedgeTimer = this.setTimer(() => {
           hedgeTimer = null;
-          if (settled || leader || attempts.length !== 1) return;
+          if (settled || leader || attempts.length !== 1 || !this.hedgeBudgetLeft()) return;
           const other = pool.pick(tried());
           if (other) {
-            hedged = true;
-            this.hedgeLog[this.hedgeLog.length - 1] = true;
+            this.hedgeTimes.push(this.now());
             start(other, false);
           }
         }, pool.hedgeDelayMs(primary));
       }
-      this.hedgeLog.push(hedged);
-      while (this.hedgeLog.length > HEDGE_BUDGET_WINDOW) this.hedgeLog.shift();
     });
+  }
+
+  /** 최근 3분 동안 한 번 더 보낸 수가 보낸 요청의 25% 보다 적은지 */
+  private hedgeBudgetLeft(): boolean {
+    const since = this.now() - HEDGE_WINDOW_MS;
+    this.hedgeTimes = this.hedgeTimes.filter((t) => t > since);
+    const sent = this.requestTimes.filter((t) => t > since).length;
+    return this.hedgeTimes.length < Math.max(1, Math.floor(sent * HEDGE_BUDGET));
   }
 
   /** 문맥 기록 (이어받아 다시 쓴 문장은 같은 자리를 바꾼다) */

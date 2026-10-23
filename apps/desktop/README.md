@@ -23,8 +23,9 @@ Linux/macOS 에서는 NSIS 설치 파일을 만들 때 wine 이 필요하므로 
 src/
 ├── main/                    # Electron main 프로세스
 │   ├── main.ts              # 창(컨트롤 패널·오버레이), IPC, app:// 프로토콜, 단축키
-│   ├── pipeline.ts          # 구간 대기열 → Gemini(스트리밍) → (선택) Claude → 자막. 최대 2요청 동시, 밀리면 합침
-│   ├── quota.ts             # 무료 한도: 모델별 일일 사용량(태평양 시간 자정 초기화), 최근 60초 분당 한도, 429 대기
+│   ├── pipeline.ts          # 구간 대기열 → Gemini(스트리밍) → (선택) Claude → 자막. 최대 2요청 동시, 밀리면 합침, 늦으면 다른 모델로 한 번 더(헤징)·오류 시 넘기기
+│   ├── model-pool.ts        # 모델 묶음: 잰 응답 속도로 가장 빠른 모델 고르기, 오류 시 잠시 쉼, 없어진 모델 빼기 (속도 기록 저장)
+│   ├── quota.ts             # 무료 한도(모델별): 일일 사용량(태평양 시간 자정 초기화), 최근 60초 분당 한도, 429 대기, 429 의 실제 한도 배우기
 │   ├── overlay-layout.ts    # 자막 창 위치 계산 (화면·9칸 위치·너비·높이)
 │   ├── keystore.ts          # 교사 키를 safeStorage(DPAPI)로 암호화 저장
 │   ├── settings.ts          # 설정 검증·저장
@@ -40,11 +41,12 @@ src/
 │   ├── control/             # 교사용 컨트롤 패널
 │   └── overlay/             # 투명·항상 위·클릭 통과 자막 창
 ├── student/                 # 학생 PC 화면 (LAN 서버가 제공)
-└── shared/                  # 타입, 언어 목록, 지시문·응답 해석, WAV
+└── shared/                  # 타입, 언어 목록, 지시문·응답 해석, 모델 후보 고르기(models.ts), WAV
 ```
 
 ## 동작 요약
-- 마이크 → `capture-worklet` → `StreamingDownsampler`(16kHz) → `Segmenter`(쉼 기준으로 자름: 빠르게 1.2~7초 / 보통 3~12초 / 절약 8~20초, 일정한 소음은 버림)
+- 마이크 → `capture-worklet` → `StreamingDownsampler`(16kHz) → `Segmenter`(쉼 기준으로 자름: 빠르게 1~5초(0.35초 쉼, 끝 무렵엔 짧은 숨 쉼, 강제로 자를 땐 가장 조용한 곳) / 보통 3~12초 / 절약 8~20초, 일정한 소음은 버림)
+- 모델: 키로 쓸 수 있는 Flash/Flash-Lite 를 최대 6개 묶고(`rankGeminiCandidates`), 요청마다 잰 시간으로 가장 빠른 것을 고른다(`ModelPool`). 첫 글자가 2.5~5초 안에 안 오면 다른 모델로 한 번 더 보내고(최근 요청의 25%까지), 10초 동안 아무것도 안 오면 끊고 넘긴다
 - 구간 → IPC(`audio:segment`) → `Pipeline` → `GeminiClient.transcribe`(WAV inline + 지시문 + 직전 문맥 + 용어집, 생각 단계 최소)
 - 응답은 `generateContentStream` 으로 받아 `parsePartialJson` 으로 끊긴 JSON 을 읽고, 받아쓰기·번역이 나오는 대로 `final:false` 자막으로 먼저 보낸 뒤 `final:true` 로 확정
 - 자막은 `seq`(말한 순서)로 정렬 — 동시 요청은 끝나는 순서가 바뀔 수 있음
