@@ -57,6 +57,14 @@ export function paramsFor(mode: LatencyMode, pressure: QuotaPressure): Segmenter
   return mode === 'fast' ? FAST_PARAMS : NORMAL_PARAMS;
 }
 
+/** Live 모드: 말하는 동안의 소리를 흘려 보낸다. 같은 말의 구간(onSegment)과 같은 번호를 쓴다 */
+export interface SegmenterStream {
+  /** 약 0.1초씩 (말 시작 직전 소리 포함) */
+  audio(utterance: number, pcm: Float32Array): void;
+  /** 쉼에서 말 한 덩이가 끝남 (길어서 강제로 자른 곳은 끝이 아니다) */
+  end(utterance: number): void;
+}
+
 const SAMPLE_RATE = 16000;
 const FRAME = 320; // 20ms
 const FRAME_MS = 20;
@@ -67,6 +75,10 @@ const SOFT_CUT_WINDOW_SEC = 1.5;
 const SOFT_CUT_PAUSE_MS = 120;
 /** 그래도 쉼이 없어 강제로 자를 때 자를 곳을 찾는 범위 (20ms × 20 = 0.4초) */
 const HARD_CUT_SEARCH_FRAMES = 20;
+/** 흘려 보낼 때 묶는 프레임 수 (20ms × 5 = 0.1초) */
+const STREAM_FRAMES = 5;
+/** 말 한 덩이 번호 (마이크가 여러 개여도 겹치지 않게 모듈 전체에서 센다) */
+let nextUtterance = 1;
 
 export function frameDb(frame: Float32Array): number {
   let sum = 0;
@@ -89,11 +101,14 @@ export class Segmenter {
   private frames: Frame[] = [];
   private speechFrames = 0;
   private trailingSilence = 0;
+  private utterance = 0;
+  private streamBuf: Frame[] = [];
 
   constructor(
     params: SegmenterParams,
-    private readonly onSegment: (pcm: Float32Array) => void,
+    private readonly onSegment: (pcm: Float32Array, utterance: number) => void,
     private readonly onLevel?: (db: number, speaking: boolean) => void,
+    private readonly stream?: SegmenterStream,
   ) {
     this.params = params;
   }
@@ -160,6 +175,7 @@ export class Segmenter {
     }
 
     this.frames.push(frame);
+    this.streamPush([frame]);
     if (loud) {
       this.speechFrames++;
       this.trailingSilence = 0;
@@ -182,9 +198,9 @@ export class Segmenter {
       const stillSpeaking = this.trailingSilence === 0;
       // 말하는 중에 잘라야 하면 마지막 0.4초 중 가장 조용한 곳(음절 사이)에서 자르고, 뒷부분은 다음 구간 앞에 붙인다
       const carry = stillSpeaking ? this.takeAfterQuietest() : [];
-      this.finish(false);
+      this.finish(false, stillSpeaking);
       if (stillSpeaking) {
-        this.begin(); // 말이 계속되면 바로 다음 구간 시작
+        this.begin(true); // 말이 계속되면 바로 다음 구간 시작 (같은 말 덩이, 소리는 이미 보냄)
         this.frames.push(...carry);
         this.speechFrames += carry.length;
       }
@@ -212,7 +228,12 @@ export class Segmenter {
     while (this.preRoll.length > max) this.preRoll.shift();
   }
 
-  private begin(): void {
+  /** continued: 길어서 강제로 자른 뒤 이어지는 구간 (같은 말 덩이) */
+  private begin(continued = false): void {
+    if (!continued) {
+      this.utterance = nextUtterance++;
+      this.streamPush([...this.preRoll, ...this.onsetFrames]);
+    }
     this.active = true;
     this.frames = [...this.preRoll, ...this.onsetFrames];
     this.speechFrames = this.onsetFrames.length;
@@ -222,7 +243,8 @@ export class Segmenter {
     this.onsetRun = 0;
   }
 
-  private finish(force: boolean): void {
+  /** continuing: 말이 이어져 바로 다음 구간을 시작한다 (Live 로는 끝을 알리지 않는다) */
+  private finish(force: boolean, continuing = false): void {
     const speechSec = (this.speechFrames * FRAME_MS) / 1000;
     const keep = this.frames.length - Math.max(0, this.trailingSilence - TAIL_KEEP_FRAMES);
     const frames = this.frames.slice(0, keep);
@@ -230,18 +252,43 @@ export class Segmenter {
     this.frames = [];
     this.speechFrames = 0;
     this.trailingSilence = 0;
-    if (speechSec < this.params.minSpeechSec && !(force && speechSec > 0.3)) return;
+    const segment = this.keepSegment(frames, speechSec, force);
+    if (segment) this.onSegment(segment, this.utterance);
+    if (!continuing) this.streamEnd();
+  }
 
+  /** 버릴 구간이면 null: 너무 짧거나, 크기가 거의 일정한 소음 */
+  private keepSegment(frames: Frame[], speechSec: number, force: boolean): Float32Array | null {
+    if (speechSec < this.params.minSpeechSec && !(force && speechSec > 0.3)) return null;
     // 말소리는 음절마다 크기가 오르내린다. 크기가 거의 일정하면 선풍기 같은 지속 소음으로 보고 버린다.
     const levels = frames.map((f) => f.db);
     if (stdDev(levels) < STEADY_NOISE_STD_DB) {
       this.noiseFloorDb = clampFloor(mean(levels));
-      return;
+      return null;
     }
-
     const out = new Float32Array(frames.length * FRAME);
     frames.forEach((f, i) => out.set(f.samples, i * FRAME));
-    this.onSegment(out);
+    return out;
+  }
+
+  private streamPush(frames: Frame[]): void {
+    if (!this.stream || frames.length === 0) return;
+    this.streamBuf.push(...frames);
+    if (this.streamBuf.length >= STREAM_FRAMES) this.streamFlush();
+  }
+
+  private streamFlush(): void {
+    if (!this.stream || this.streamBuf.length === 0) return;
+    const out = new Float32Array(this.streamBuf.length * FRAME);
+    this.streamBuf.forEach((f, i) => out.set(f.samples, i * FRAME));
+    this.streamBuf = [];
+    this.stream.audio(this.utterance, out);
+  }
+
+  private streamEnd(): void {
+    if (!this.stream) return;
+    this.streamFlush();
+    this.stream.end(this.utterance);
   }
 }
 

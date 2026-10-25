@@ -1,4 +1,5 @@
 // main / preload / renderer 가 함께 쓰는 타입과 기본값
+import { DEFAULT_LIVE_MODEL } from './live';
 
 /** 마이크 채널: 교사 전용(한국어), 학생 전용, 자동(한 마이크를 같이 씀 → 언어로 구분) */
 export type Channel = 'teacher' | 'student' | 'auto';
@@ -29,6 +30,12 @@ export interface Settings {
   modelPreference: 'fast' | 'quality';
   /** 첫 응답이 늦으면 다른 모델로 한 번 더 보내 먼저 온 답을 쓴다 (무료 한도는 조금 더 씀) */
   hedgeRequests: boolean;
+  /** (시험) Gemini Live 로 말하는 동안 바로 번역. 안 되면 기존 방식으로 자동으로 바뀐다 */
+  liveMode: boolean;
+  /** Live 실시간 번역 모델 */
+  liveModel: string;
+  /** 마지막 연결 테스트에서 받은, 이 키로 쓸 수 있는 Live 모델 목록 */
+  liveModels: string[];
   /** 처음 설정(키·언어·마이크)을 마쳤는지 */
   onboarded: boolean;
   /** 학생·보호자 동의 안내를 확인했는지 */
@@ -79,6 +86,9 @@ export const DEFAULT_SETTINGS: Settings = {
   geminiModelMode: 'auto',
   modelPreference: 'fast',
   hedgeRequests: true,
+  liveMode: false,
+  liveModel: DEFAULT_LIVE_MODEL,
+  liveModels: [],
   onboarded: false,
   consentAcknowledged: false,
   geminiModel: 'gemini-3.1-flash-lite',
@@ -157,6 +167,18 @@ export interface QuotaStatus {
   models: ModelInfo[];
   /** 최근 자막이 말이 끝난 뒤 나오기까지 걸린 시간 (ms, 평균) */
   recentLatencyMs: number | null;
+}
+
+/** Live 모드 상태 (화면 표시용) */
+export interface LiveStatus {
+  /** off: 꺼짐 / idle: 켜짐, 수업 전 / connecting: 연결 중 / on: Live 로 자막을 만드는 중 / fallback: 안 돼서 기존 방식으로 */
+  state: 'off' | 'idle' | 'connecting' | 'on' | 'fallback';
+  model: string;
+  /** 연결된 세션 수 / 연 세션 수 (목표 언어마다 하나) */
+  ready: number;
+  wanted: number;
+  /** fallback 이면 그 이유 */
+  message: string;
 }
 
 export interface StatusMessage {
@@ -239,6 +261,8 @@ export interface TestResult {
   message: string;
   /** Gemini: 이 키로 쓸 수 있는 모델 목록 */
   models?: string[];
+  /** Gemini: 이 키로 쓸 수 있는 Live 모델 목록 */
+  liveModels?: string[];
   recommendedModel?: string;
 }
 
@@ -252,7 +276,15 @@ export interface RendererApi {
   testKey(provider: KeyProvider): Promise<TestResult>;
   startSession(): Promise<{ ok: boolean; message: string }>;
   stopSession(): Promise<void>;
-  sendSegment(channel: Channel, pcm16k: Float32Array): void;
+  /** utterance: 화면이 쉼에서 끊은 '말 한 덩이' 번호 (Live 모드에서 같은 말의 소리와 구간을 잇는다) */
+  sendSegment(channel: Channel, pcm16k: Float32Array, utterance?: number): void;
+  /** Live 모드: 말하는 동안의 소리 (약 0.1초씩) */
+  sendAudio(channel: Channel, utterance: number, pcm16k: Float32Array): void;
+  /** Live 모드: 말 한 덩이가 끝남 */
+  endAudio(channel: Channel, utterance: number): void;
+  testLive(): Promise<TestResult>;
+  getLiveStatus(): Promise<LiveStatus>;
+  onLiveStatus(cb: (status: LiveStatus) => void): () => void;
   getQuota(): Promise<QuotaStatus>;
   getStudentLink(): Promise<StudentLinkStatus>;
   openExternal(url: string): Promise<void>;

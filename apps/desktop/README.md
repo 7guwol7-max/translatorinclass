@@ -24,6 +24,7 @@ src/
 ├── main/                    # Electron main 프로세스
 │   ├── main.ts              # 창(컨트롤 패널·오버레이), IPC, app:// 프로토콜, 단축키
 │   ├── pipeline.ts          # 구간 대기열 → Gemini(스트리밍) → (선택) Claude → 자막. 최대 2요청 동시, 밀리면 합침, 늦으면 다른 모델로 한 번 더(헤징)·오류 시 넘기기
+│   ├── live.ts              # (시험) Live 모드: 목표 언어별 Live 세션, 서버 글자를 말 한 덩이에 붙이기, 무응답이면 pipeline 으로 넘기기, 세션 교체
 │   ├── model-pool.ts        # 모델 묶음: 잰 응답 속도로 가장 빠른 모델 고르기, 오류 시 잠시 쉼, 없어진 모델 빼기 (속도 기록 저장)
 │   ├── quota.ts             # 무료 한도(모델별): 일일 사용량(태평양 시간 자정 초기화), 최근 60초 분당 한도, 429 대기, 429 의 실제 한도 배우기
 │   ├── overlay-layout.ts    # 자막 창 위치 계산 (화면·9칸 위치·너비·높이)
@@ -31,6 +32,7 @@ src/
 │   ├── settings.ts          # 설정 검증·저장
 │   ├── providers/
 │   │   ├── gemini.ts        # 오디오 → 받아쓰기·언어 판별·번역 (JSON 스키마 응답)
+│   │   ├── gemini-live.ts   # Live API WebSocket (설정·소리 보내기·받아쓰기/번역 글자 받기·닫힌 이유 분류)
 │   │   ├── claude.ts        # (선택) 문장 번역
 │   │   ├── aihub.ts         # (선택) AI 허브 데이터셋 검색·상세 (X-API-KEY, 메타데이터만)
 │   │   └── errors.ts        # 오류 분류 (분당/일일 한도, 키, 모델, 네트워크)
@@ -41,7 +43,7 @@ src/
 │   ├── control/             # 교사용 컨트롤 패널
 │   └── overlay/             # 투명·항상 위·클릭 통과 자막 창
 ├── student/                 # 학생 PC 화면 (LAN 서버가 제공)
-└── shared/                  # 타입, 언어 목록, 지시문·응답 해석, 모델 후보 고르기(models.ts), WAV
+└── shared/                  # 타입, 언어 목록, 지시문·응답 해석, 모델 후보 고르기(models.ts), Live 도움 함수(live.ts), WAV
 ```
 
 ## 동작 요약
@@ -55,3 +57,13 @@ src/
 - 결과 → 컨트롤 패널·오버레이·학생 링크로 전달
 - AI 허브: 컨트롤 패널 → IPC(`aihub:search`/`aihub:detail`) → `AihubClient`(`/mcp/dataSetList.do`, `/mcp/dataSetDetail.do`). 키는 main 프로세스에서만 쓰고, 데이터 파일은 받지 않는다
 - 무료 한도: SDK 자동 재시도는 끄고(`retryOptions.attempts = 1`) 파이프라인이 429 의 `retryDelay` 를 보고 기다린다
+
+### Live 모드 (시험, 기본 꺼짐)
+- `Segmenter` 가 말하는 동안 0.1초씩 `stream.audio(말 번호, 소리)`, 쉼에서 `stream.end(말 번호)` 를 부른다. 길어서 강제로 자른 곳은 끝이 아니다.
+  구간(`onSegment`)도 같은 말 번호로 그대로 보낸다
+- IPC `audio:stream` / `audio:stream-end` → `LiveEngine` → 목표 언어마다 `connectLive`(실시간 번역 모델, `translationConfig`) 세션으로 보낸다
+- 서버 글자(`inputTranscription`·`outputTranscription`)는 말한 순서대로 말 덩이에 붙인다. 서버가 차례를 마쳤거나(`generationComplete`/`turnComplete`)
+  글자가 1.5초 멈췄거나, 그 세션 번역이 필요 없는 말(예: 한국어 세션에 교사 말)이면 다음 말로 넘어간다
+- 말이 끝나고 다 받았거나 1.2초 조용하면 확정. 4초 안에 글자가 없거나 번역이 하나도 없으면 보관한 구간을 `pipeline.enqueue(…, 자리)` 로 넘겨
+  같은 자막 자리(id·seq)에 쓴다. 1.5초 넘는 말을 연달아 3번 놓치거나 연결이 거절되면 그 수업은 기존 방식으로
+- SDK 의 `live.connect` 는 서버가 설정을 거절하면 끝나지 않아서 `ws` 로 같은 메시지를 직접 주고받는다 (`test/live.test.ts` 의 가짜 Live 서버로 시험)

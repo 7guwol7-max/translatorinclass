@@ -8,6 +8,7 @@ import type {
   DisplayInfo,
   KeyProvider,
   LatencyMode,
+  LiveStatus,
   OverlayAnchor,
   QuotaPressure,
   QuotaStatus,
@@ -18,6 +19,7 @@ import type {
 import { STUDENT_LANGUAGES, languageInfo } from '../../shared/languages';
 import { MicCapture, listMicrophones } from '../audio/capture';
 import { CLAUDE_MODELS } from '../../shared/claude-models';
+import { liveTranslateModels } from '../../shared/live';
 import '../global';
 
 const api = window.api;
@@ -29,6 +31,7 @@ let captures: MicCapture[] = [];
 let pressure: QuotaPressure = 'normal';
 let overlayVisible = true;
 let displays: DisplayInfo[] = [];
+let liveStatus: LiveStatus | null = null;
 const levels = { teacher: -90, student: -90 };
 
 const ANCHOR_LABEL: Record<OverlayAnchor, string> = {
@@ -154,6 +157,8 @@ function render(): void {
   setRadio('latency', settings.latencyMode);
   setRadio('modelPref', settings.modelPreference);
   $<HTMLInputElement>('hedge').checked = settings.hedgeRequests;
+  $<HTMLInputElement>('liveMode').checked = settings.liveMode;
+  renderLiveModels();
   const manual = settings.geminiModelMode === 'manual';
   $<HTMLInputElement>('manualModel').checked = manual;
   $<HTMLInputElement>('geminiModel').disabled = !manual;
@@ -262,8 +267,43 @@ function renderQuota(q: QuotaStatus): void {
   applyTuning();
 }
 
+/** Live 번역 모델 고르기: 이 키로 쓸 수 있는 것 + 지금 고른 것 */
+function renderLiveModels(): void {
+  const select = $<HTMLSelectElement>('liveModel');
+  const models = [...new Set([...liveTranslateModels(settings.liveModels), settings.liveModel])];
+  const listed = new Set(liveTranslateModels(settings.liveModels));
+  const same = [...select.options].map((o) => o.value).join() === models.join();
+  if (!same) {
+    select.replaceChildren(...models.map((m) => Object.assign(el('option'), {
+      value: m,
+      textContent: listed.has(m) || settings.liveModels.length === 0 ? m : `${m} (이 키 목록에 없음)`,
+    })));
+  }
+  select.value = settings.liveModel;
+}
+
+const LIVE_BADGE: Record<LiveStatus['state'], string> = {
+  off: '꺼짐',
+  idle: '켜짐 · 수업 시작 때 연결',
+  connecting: '연결 중',
+  on: 'Live 로 자막 만드는 중',
+  fallback: '지금 방식으로 바뀜',
+};
+
+function renderLive(status: LiveStatus): void {
+  liveStatus = status;
+  const badge = $('liveBadge');
+  const count = status.wanted > 0 && (status.state === 'on' || status.state === 'connecting') ? ` (${status.ready}/${status.wanted})` : '';
+  badge.textContent = LIVE_BADGE[status.state] + count;
+  badge.classList.toggle('ok', status.state === 'on');
+  badge.classList.toggle('warn', status.state === 'fallback');
+  badge.title = status.message;
+  renderLatency(lastQuota?.recentLatencyMs ?? null);
+}
+
 function renderLatency(ms: number | null): void {
-  const text = listening && ms !== null ? `자막이 말 끝나고 약 ${(ms / 1000).toFixed(1)}초 뒤 나와요` : '';
+  const live = liveStatus?.state === 'on' ? 'Live · ' : '';
+  const text = listening && ms !== null ? `${live}자막이 말 끝나고 약 ${(ms / 1000).toFixed(1)}초 뒤 나와요` : '';
   $('topLatency').textContent = text;
   if (listening) $('heroSub').textContent = text || '말하면 몇 초 안에 자막이 떠요. 자막 창 위에 마우스를 올리면 멈출 수 있어요.';
 }
@@ -472,9 +512,18 @@ async function startCaptures(): Promise<void> {
   for (const spec of specs) {
     const capture = new MicCapture({
       deviceId: spec.deviceId,
-      onSegment: (pcm) => api.sendSegment(spec.channel, pcm),
+      onSegment: (pcm, utterance) => api.sendSegment(spec.channel, pcm, utterance),
       onLevel: (db) => {
         levels[spec.meter] = Math.max(levels[spec.meter], db);
+      },
+      // Live 모드면 말하는 동안 소리를 바로 보낸다 (설정을 수업 중에 바꿔도 따라간다)
+      stream: {
+        audio: (utterance, pcm) => {
+          if (settings.liveMode) api.sendAudio(spec.channel, utterance, pcm);
+        },
+        end: (utterance) => {
+          if (settings.liveMode) api.endAudio(spec.channel, utterance);
+        },
       },
     });
     await capture.start();
@@ -1004,6 +1053,26 @@ function bind(): void {
   radios('latency', (v) => void save({ latencyMode: v as LatencyMode }));
   radios('modelPref', (v) => void save({ modelPreference: v as Settings['modelPreference'] }));
   $<HTMLInputElement>('hedge').addEventListener('change', (e) => void save({ hedgeRequests: (e.target as HTMLInputElement).checked }));
+  $<HTMLInputElement>('liveMode').addEventListener('change', (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    void save({ liveMode: on });
+    note('info', on ? 'Live 모드를 켰어요. 연결이 안 되면 지금 방식으로 자동으로 바뀝니다.' : 'Live 모드를 껐어요.');
+  });
+  $<HTMLSelectElement>('liveModel').addEventListener('change', (e) => void save({ liveModel: (e.target as HTMLSelectElement).value }));
+  $('liveTest').addEventListener('click', async () => {
+    const r = $('liveResult');
+    const button = $<HTMLButtonElement>('liveTest');
+    r.className = 'result';
+    r.textContent = '연결해 보는 중…';
+    button.disabled = true;
+    try {
+      const result = await api.testLive();
+      r.className = `result ${result.ok ? 'ok' : 'err'}`;
+      r.textContent = result.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
   $<HTMLInputElement>('manualModel').addEventListener('change', (e) => void save({ geminiModelMode: (e.target as HTMLInputElement).checked ? 'manual' : 'auto' }));
 
   $<HTMLSelectElement>('teacherMic').addEventListener('change', (e) => void save({ teacherMicId: (e.target as HTMLSelectElement).value }));
@@ -1064,6 +1133,7 @@ function bind(): void {
   api.onQuota(renderQuota);
   api.onStatus(addMessage);
   api.onStudentLink(renderLink);
+  api.onLiveStatus(renderLive);
   api.onSettings((next) => {
     settings = next;
     render();
@@ -1095,6 +1165,7 @@ async function init(): Promise<void> {
   renderListening();
   renderQuota(await api.getQuota());
   renderLink(await api.getStudentLink());
+  renderLive(await api.getLiveStatus());
   requestAnimationFrame(meterUpdate);
   if (!settings.onboarded) openWizard(0);
 }

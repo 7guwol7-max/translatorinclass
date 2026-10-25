@@ -41,6 +41,15 @@ const MAX_ATTEMPTS = 3;
 const HEDGE_BUDGET = 0.25;
 const HEDGE_WINDOW_MS = 180_000;
 
+/** 자막 자리 (Live 모드가 먼저 보여준 자막을 기존 방식 결과로 바꿔 쓸 때) */
+export interface CaptionSlot {
+  id: string;
+  seq: number;
+  ts: number;
+  /** 말이 끝난 시각 (자막 지연 계산 기준) */
+  endedAt?: number;
+}
+
 export interface PipelineDeps {
   getSettings(): Settings;
   transcribe(
@@ -82,6 +91,7 @@ interface QueueItem {
   avoid?: string;
   /** 구간이 들어온 시각 = 말이 끝난 직후 (자막 지연 계산 기준) */
   enqueuedAt: number;
+  slot?: CaptionSlot;
 }
 
 export class Pipeline {
@@ -110,9 +120,9 @@ export class Pipeline {
     this.clearTimer = deps.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
   }
 
-  enqueue(channel: Channel, pcm: Float32Array): void {
+  enqueue(channel: Channel, pcm: Float32Array, slot?: CaptionSlot): void {
     if (pcm.length === 0) return;
-    this.queue.push({ channel, pcm, retried: false, enqueuedAt: this.now() });
+    this.queue.push({ channel, pcm, retried: false, enqueuedAt: slot?.endedAt ?? this.now(), slot });
     let total = this.queue.reduce((n, q) => n + durationSec(q.pcm), 0);
     let dropped = 0;
     while (total > MAX_QUEUE_SEC && this.queue.length > 1) {
@@ -136,6 +146,17 @@ export class Pipeline {
     this.context = [];
     this.open = null;
     this.fatalReported = false;
+  }
+
+  /** 다음 자막 순서 번호 (Live 모드도 같은 번호를 써서 말한 순서대로 보인다) */
+  nextSeq(): number {
+    return this.seq++;
+  }
+
+  /** Live 모드 자막의 지연도 '최근 자막 지연' 평균에 넣는다 */
+  noteLatency(ms: number): void {
+    this.latencies.push(ms);
+    while (this.latencies.length > LATENCY_WINDOW) this.latencies.shift();
   }
 
   /** 지금 주로 쓰는 모델 (화면 표시용) */
@@ -239,7 +260,7 @@ export class Pipeline {
 
   private async run(model: string, batch: QueueItem): Promise<void> {
     const startedAt = batch.enqueuedAt;
-    const seq = this.seq++;
+    const seq = batch.slot?.seq ?? this.seq++;
     try {
       await this.process(model, batch, startedAt, seq);
     } catch (error) {
@@ -269,7 +290,8 @@ export class Pipeline {
       continuation: open?.transcript,
     });
 
-    const ownId = `${startedAt.toString(36)}-${seq.toString(36)}`;
+    const ownId = batch.slot?.id ?? `${startedAt.toString(36)}-${seq.toString(36)}`;
+    const ownTs = batch.slot?.ts ?? startedAt;
     /** 이어받은 경우 앞 자막 자리에 문장 전체를 다시 쓴다 */
     const target = (r: SegmentResult) => (open && speakerFor(batch.channel, r.lang) === 'teacher' ? open : null);
     const emit = (r: SegmentResult, translations: Record<string, string>, final: boolean) => {
@@ -279,7 +301,7 @@ export class Pipeline {
       this.deps.onCaption({
         id: joined ? joined.id : ownId,
         seq: joined ? joined.seq : seq,
-        ts: joined ? joined.ts : startedAt,
+        ts: joined ? joined.ts : ownTs,
         speaker,
         lang,
         transcript: joined ? `${joined.transcript} ${r.transcript}` : r.transcript,
@@ -364,15 +386,14 @@ export class Pipeline {
       }
     }
     emit(result, translations, true);
-    this.latencies.push(this.now() - startedAt);
-    while (this.latencies.length > LATENCY_WINDOW) this.latencies.shift();
+    this.noteLatency(this.now() - startedAt);
 
     const id = joined ? joined.id : ownId;
     this.remember(id, contextLine(fullTranscript, translations, s.overlayLanguages.length ? s.overlayLanguages : s.studentLanguages));
     // 교사 문장이 아직 안 끝났으면 다음 구간이 이어받는다 (너무 길어지면 끊는다)
     const parts = (joined?.parts ?? 0) + 1;
     if (speaker === 'teacher' && result.complete === false && parts < MAX_JOINED_PARTS) {
-      this.open = { id, seq: joined ? joined.seq : seq, ts: joined ? joined.ts : startedAt, transcript: fullTranscript, translations, parts, endedAt: this.now() };
+      this.open = { id, seq: joined ? joined.seq : seq, ts: joined ? joined.ts : ownTs, transcript: fullTranscript, translations, parts, endedAt: this.now() };
     }
   }
 
@@ -571,9 +592,10 @@ export class Pipeline {
     this.deps.onFatal(message);
   }
 
-  /** 맨 앞에서부터 같은 채널로 이어진 구간들을 최대 30초까지 하나로 합친다 (말한 순서 유지) */
+  /** 맨 앞에서부터 같은 채널로 이어진 구간들을 최대 30초까지 하나로 합친다 (말한 순서 유지). 자막 자리가 정해진 구간은 합치지 않는다 */
   private takeBatch(): QueueItem {
     const channel = this.queue[0].channel;
+    const slot = this.queue[0].slot;
     const parts: Float32Array[] = [];
     let total = 0;
     let retried = false;
@@ -582,13 +604,13 @@ export class Pipeline {
     let taken = 0;
     for (const item of this.queue) {
       const d = durationSec(item.pcm);
-      if (item.channel !== channel || (parts.length > 0 && total + d > MAX_BATCH_SEC)) break;
+      if (item.channel !== channel || (parts.length > 0 && (total + d > MAX_BATCH_SEC || slot || item.slot))) break;
       parts.push(item.pcm);
       total += d;
       retried ||= item.retried;
       taken++;
     }
     this.queue = this.queue.slice(taken);
-    return { channel, pcm: concatWithGap(parts), retried, avoid, enqueuedAt };
+    return { channel, pcm: concatWithGap(parts), retried, avoid, enqueuedAt, slot };
   }
 }

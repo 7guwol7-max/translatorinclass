@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { StreamingDownsampler } from '../src/renderer/audio/resampler';
-import { NORMAL_PARAMS, SAVING_PARAMS, Segmenter, frameDb } from '../src/renderer/audio/segmenter';
+import { FAST_PARAMS, NORMAL_PARAMS, SAVING_PARAMS, Segmenter, frameDb } from '../src/renderer/audio/segmenter';
 import { concatWithGap, encodeWav } from '../src/shared/wav';
 
 const SR = 16000;
@@ -118,6 +118,48 @@ describe('Segmenter', () => {
   it('일정한 배경 소음(선풍기)은 말소리로 보내지 않는다', () => {
     const signal = join(noise(0.5, 0.001), noise(20, 0.05, 7), noise(1, 0.001));
     expect(run(NORMAL_PARAMS, signal)).toHaveLength(0);
+  });
+
+  it('Live 모드: 말하는 동안 소리를 0.1초씩 흘려 보내고, 쉼에서 끝을 알린다 (구간과 같은 번호)', () => {
+    const segments: { len: number; utterance: number }[] = [];
+    const audio: { utterance: number; len: number }[] = [];
+    const ends: number[] = [];
+    const seg = new Segmenter(NORMAL_PARAMS, (pcm, utterance) => segments.push({ len: pcm.length, utterance }), undefined, {
+      audio: (utterance, pcm) => audio.push({ utterance, len: pcm.length }),
+      end: (utterance) => ends.push(utterance),
+    });
+    const signal = join(noise(1, 0.001), speech(4), noise(1, 0.001), speech(3.5), noise(2, 0.001));
+    for (let i = 0; i < signal.length; i += 777) seg.push(signal.subarray(i, i + 777));
+    seg.flush();
+    expect(segments).toHaveLength(2);
+    expect(ends).toEqual(segments.map((x) => x.utterance));
+    expect(ends[1]).toBeGreaterThan(ends[0]);
+    for (const u of ends) {
+      const sent = audio.filter((a) => a.utterance === u);
+      const total = sent.reduce((n, a) => n + a.len, 0) / SR;
+      expect(total).toBeGreaterThan(3.5); // 말 시작 직전 소리부터 쉼까지
+      expect(sent.slice(0, -1).every((a) => a.len >= 1600)).toBe(true); // 0.1초 이상씩 묶어 보낸다
+    }
+  });
+
+  it('Live 모드: 길어서 강제로 자른 곳은 말 끝이 아니다 (한 덩이로 이어 보낸다)', () => {
+    const events: string[] = [];
+    let streamed = 0;
+    const seg = new Segmenter(FAST_PARAMS, (_pcm, utterance) => events.push(`seg${utterance}`), undefined, {
+      audio: (_u, pcm) => (streamed += pcm.length),
+      end: (utterance) => events.push(`end${utterance}`),
+    });
+    // 쉬지 않고 이어지는 말소리 (크기가 내려가도 말소리 기준 아래로는 안 떨어짐)
+    const talk = new Float32Array(SR * 10).map((_, i) => Math.sin(i / 8) * (0.2 + 0.15 * Math.sin(i / 1600)));
+    const signal = join(noise(1, 0.001), talk, noise(2, 0.001));
+    for (let i = 0; i < signal.length; i += 777) seg.push(signal.subarray(i, i + 777));
+    seg.flush();
+    const first = events[0].slice(3);
+    const ofFirst = events.filter((e) => e.replace(/^(seg|end)/, '') === first);
+    expect(ofFirst.filter((e) => e.startsWith('seg')).length).toBeGreaterThanOrEqual(2); // 5초마다 잘린 구간들
+    expect(ofFirst.filter((e) => e.startsWith('end'))).toHaveLength(1); // 끝은 한 번
+    expect(ofFirst.at(-1)).toBe(`end${first}`);
+    expect(streamed / SR).toBeGreaterThan(10);
   });
 
   it('배경 소음이 있어도 그보다 큰 말소리는 잡는다', () => {
