@@ -77,6 +77,8 @@ jobs:
         with:
           name: ClassroomInterpreter-Windows
           path: out
+      - name: 사용설명서 붙이기
+        run: cp docs/manual/ClassroomInterpreter-Manual-ko.pdf out/
       - name: GitHub Release 만들기
         env:
           GH_TOKEN: ${{ github.token }}
