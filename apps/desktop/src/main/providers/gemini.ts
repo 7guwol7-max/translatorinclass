@@ -105,17 +105,20 @@ export class GeminiClient {
     return result.transcript ? result : parsePartialSegment(text);
   }
 
-  /** 이 키로 generateContent 를 쓸 수 있는 모델 ID 목록 */
-  async listModels(): Promise<string[]> {
+  /** 이 키로 쓸 수 있는 모델 ID: generateContent(구간 방식)용과 Live(bidiGenerateContent)용 */
+  async listModels(): Promise<{ generate: string[]; live: string[] }> {
     try {
       const pager = await this.ai.models.list();
-      const names: string[] = [];
+      const generate: string[] = [];
+      const live: string[] = [];
       for await (const model of pager) {
         if (!model.name) continue;
+        const id = model.name.replace(/^models\//, '');
         const actions = model.supportedActions ?? [];
-        if (actions.length === 0 || actions.includes('generateContent')) names.push(model.name.replace(/^models\//, ''));
+        if (actions.length === 0 || actions.includes('generateContent')) generate.push(id);
+        if (actions.includes('bidiGenerateContent')) live.push(id);
       }
-      return names.sort();
+      return { generate: generate.sort(), live: live.sort() };
     } catch (error) {
       throw classifyGeminiError(error);
     }

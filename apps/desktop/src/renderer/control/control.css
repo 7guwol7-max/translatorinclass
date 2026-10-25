@@ -163,6 +163,10 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--p
 .tag { font-style: normal; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px; }
 .tag.free { background: var(--success-soft); color: var(--success); }
 .tag.paid { background: var(--warn-soft); color: var(--warn); }
+.tag.test { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+.live-test { align-items: center; }
+.live-test .result { flex: 1; min-width: 200px; font-size: 13px; }
+.badge.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 
 /* 스위치 */
 .switch { appearance: none; width: 40px; height: 22px; border-radius: 999px; background: var(--border-strong); position: relative; cursor: pointer; transition: background 150ms; margin: 0; flex: none; }

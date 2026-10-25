@@ -214,6 +214,13 @@
       <section class="page" data-page="speed">
         <header class="page-head"><h1>속도·무료 사용량</h1><p>Gemini 무료 등급을 빠르고 오래 쓰도록 모델 여러 개를 묶어 자동으로 고릅니다.</p></header>
         <div class="card">
+          <div class="card-head"><h3>Live 모드 <em class="tag test">시험</em></h3><span id="liveBadge" class="badge">꺼짐</span></div>
+          <label class="switch-row"><span><b>말하는 동안 바로 번역하기 (Gemini Live)</b><small>말을 끊어 보내지 않고 흘려 보내서, 말하는 중에도 번역이 나와요. 학생 언어마다 연결을 하나씩 엽니다. 연결이 안 되거나 어떤 말에 답이 없으면 그 말은 지금 방식으로 자동으로 처리해요.</small></span><input id="liveMode" type="checkbox" class="switch"></label>
+          <div class="field"><label for="liveModel">Live 번역 모델</label><select id="liveModel"></select></div>
+          <div class="btn-row live-test"><button id="liveTest" type="button" class="btn">Live 연결 테스트</button><p id="liveResult" class="result" role="status"></p></div>
+          <p class="hint">아직 시험 중인 기능이에요. 켠 뒤 수업 화면의 '자막이 말 끝나고 약 N초' 를 지금 방식과 비교해 보세요. Live 모드에서는 용어집·Claude 번역이 쓰이지 않습니다.</p>
+        </div>
+        <div class="card">
           <h3>자막 속도</h3>
           <div class="option-cards">
             <label class="option"><input type="radio" name="latency" value="fast"><span><b>빠르게 <em class="tag free">추천</em></b><small>짧게 끊어 바로 보냄. 무료 사용량을 가장 많이 씀</small></span></label>

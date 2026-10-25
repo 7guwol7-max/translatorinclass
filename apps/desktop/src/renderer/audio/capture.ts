@@ -1,12 +1,15 @@
 // 마이크 하나를 열어 16kHz 로 바꾼 뒤 Segmenter 에 흘려 넣는다.
 import { StreamingDownsampler } from './resampler';
-import { NORMAL_PARAMS, Segmenter, paramsFor } from './segmenter';
+import { NORMAL_PARAMS, Segmenter, paramsFor, type SegmenterStream } from './segmenter';
 import type { LatencyMode, QuotaPressure } from '../../shared/types';
 
 export interface MicCaptureOptions {
   deviceId: string;
-  onSegment: (pcm16k: Float32Array) => void;
+  /** utterance: 쉼에서 끊은 말 한 덩이 번호 (길어서 강제로 자른 구간들은 같은 번호) */
+  onSegment: (pcm16k: Float32Array, utterance: number) => void;
   onLevel?: (db: number, speaking: boolean) => void;
+  /** Live 모드: 말하는 동안의 소리와 말 끝 */
+  stream?: SegmenterStream;
 }
 
 export class MicCapture {
@@ -16,7 +19,7 @@ export class MicCapture {
   private readonly segmenter: Segmenter;
 
   constructor(private readonly options: MicCaptureOptions) {
-    this.segmenter = new Segmenter(NORMAL_PARAMS, options.onSegment, options.onLevel);
+    this.segmenter = new Segmenter(NORMAL_PARAMS, options.onSegment, options.onLevel, options.stream);
   }
 
   async start(): Promise<void> {

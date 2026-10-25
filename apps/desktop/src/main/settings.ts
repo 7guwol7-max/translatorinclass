@@ -15,6 +15,12 @@ export function sanitizeSettings(input: Partial<Settings>, base: Settings = DEFA
   if (input.geminiModelMode === 'auto' || input.geminiModelMode === 'manual') s.geminiModelMode = input.geminiModelMode;
   if (input.modelPreference === 'fast' || input.modelPreference === 'quality') s.modelPreference = input.modelPreference;
   if (typeof input.hedgeRequests === 'boolean') s.hedgeRequests = input.hedgeRequests;
+  if (typeof input.liveMode === 'boolean') s.liveMode = input.liveMode;
+  const lm = str(input.liveModel)?.trim().replace(/^models\//, '');
+  if (lm && MODEL_ID.test(lm)) s.liveModel = lm;
+  if (Array.isArray(input.liveModels)) {
+    s.liveModels = input.liveModels.filter((m): m is string => typeof m === 'string' && MODEL_ID.test(m)).slice(0, 100);
+  }
   if (typeof input.onboarded === 'boolean') s.onboarded = input.onboarded;
   if (typeof input.consentAcknowledged === 'boolean') s.consentAcknowledged = input.consentAcknowledged;
   const gm = str(input.geminiModel)?.trim();

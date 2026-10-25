@@ -25,6 +25,9 @@ import { Pipeline } from './pipeline';
 import { ModelPool, type ModelStat, type PoolStore } from './model-pool';
 import { rankGeminiCandidates } from '../shared/models';
 import { GeminiClient } from './providers/gemini';
+import { connectLive } from './providers/gemini-live';
+import { LiveEngine } from './live';
+import { liveTranslateModels, pickLiveModel } from '../shared/live';
 import { ClaudeTranslator } from './providers/claude';
 import { AihubClient } from './providers/aihub';
 import { ProviderError } from './providers/errors';
@@ -36,6 +39,8 @@ const RENDERER_DIR = path.join(DIST, 'renderer');
 const STUDENT_DIR = path.join(DIST, 'student');
 const APP_ORIGIN = 'app://ui';
 const MAX_SEGMENT_SAMPLES = 16000 * 60;
+/** Live 모드로 한 번에 받는 소리 조각의 최대 길이 (보통 0.1초) */
+const MAX_STREAM_SAMPLES = 16000 * 2;
 
 const EXTERNAL_ALLOWLIST = [
   'https://aistudio.google.com/',
@@ -61,6 +66,7 @@ let keys: KeyStore;
 let quota: QuotaTracker;
 let pool: ModelPool;
 let pipeline: Pipeline;
+let live: LiveEngine;
 let studentLink: StudentLinkServer;
 let listening = false;
 let moveMode = false;
@@ -71,6 +77,15 @@ let claude: { key: string; client: ClaudeTranslator } | null = null;
 function geminiClient(key: string): GeminiClient {
   if (!gemini || gemini.key !== key) gemini = { key, client: new GeminiClient(key) };
   return gemini.client;
+}
+
+/** 교사 마이크가 쓰는 채널 (Live 모드는 수업 시작 때 이 채널의 세션을 미리 연다) */
+function teacherChannel(): Channel {
+  return settings.get().teacherMicMode === 'auto' ? 'auto' : 'teacher';
+}
+
+function publishLive(): void {
+  control?.webContents.send('live', live.status());
 }
 
 function claudeClient(key: string): ClaudeTranslator {
@@ -366,6 +381,14 @@ function handle<T extends unknown[], R>(channel: string, fn: (...args: T) => R |
   });
 }
 
+function isChannel(v: unknown): v is Channel {
+  return v === 'teacher' || v === 'student' || v === 'auto';
+}
+
+function isUtterance(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v > 0;
+}
+
 function isProvider(v: unknown): v is KeyProvider {
   return v === 'gemini' || v === 'claude' || v === 'aihub';
 }
@@ -375,19 +398,22 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
   if (!key) return { ok: false, message: '저장된 키가 없습니다.' };
   try {
     if (provider === 'gemini') {
-      const models = await geminiClient(key).listModels();
+      const { generate: models, live: liveModels } = await geminiClient(key).listModels();
       const recommended = pickRecommendedGeminiModel(models);
-      sendAll('settings', await settings.update({ geminiModels: models }));
+      sendAll('settings', await settings.update({ geminiModels: models, liveModels, liveModel: pickLiveModel(liveModels, settings.get().liveModel) }));
       refreshPool();
+      publishLive();
+      const liveNote = liveTranslateModels(liveModels).length > 0 ? ' Live 번역 모델도 쓸 수 있어요.' : '';
       if (settings.get().geminiModelMode === 'auto') {
         const pooled = pool.list();
         return {
           ok: true,
           models,
+          liveModels,
           recommendedModel: recommended,
           message: pooled.length > 0
-            ? `연결되었습니다. 모델 ${pooled.length}개를 묶어 가장 빠른 것을 자동으로 씁니다.`
-            : '연결되었지만 이 키로 쓸 수 있는 Gemini Flash 모델이 없습니다.',
+            ? `연결되었습니다. 모델 ${pooled.length}개를 묶어 가장 빠른 것을 자동으로 씁니다.${liveNote}`
+            : `연결되었지만 이 키로 쓸 수 있는 Gemini Flash 모델이 없습니다.${liveNote}`,
         };
       }
       const current = settings.get().geminiModel;
@@ -395,6 +421,7 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
       return {
         ok: true,
         models,
+        liveModels,
         recommendedModel: recommended,
         message: hasCurrent
           ? `연결되었습니다. 현재 모델(${current})을 쓸 수 있습니다.`
@@ -413,6 +440,31 @@ async function testKey(provider: KeyProvider): Promise<TestResult> {
   }
 }
 
+/** Live 세션 하나를 열었다 닫아 본다 (소리는 보내지 않는다) */
+async function testLive(): Promise<TestResult> {
+  const key = await keys.get('gemini');
+  if (!key) return { ok: false, message: '먼저 Gemini API 키를 저장해 주세요.' };
+  const s = settings.get();
+  const target = s.studentLanguages[0] ?? 'en';
+  const startedAt = Date.now();
+  try {
+    const conn = await connectLive(key, { model: s.liveModel, target }, {
+      onInput: () => undefined,
+      onOutput: () => undefined,
+      onTurnEnd: () => undefined,
+      onUsage: () => undefined,
+      onGoAway: () => undefined,
+      onClose: () => undefined,
+    });
+    const ms = Date.now() - startedAt;
+    conn.close();
+    const sessions = s.studentLanguages.length + (s.teacherMicMode === 'auto' ? 1 : 0);
+    return { ok: true, message: `Live 연결 성공 (${s.liveModel}, ${(ms / 1000).toFixed(1)}초). 수업 중에는 연결을 ${sessions}개 엽니다.` };
+  } catch (error) {
+    return { ok: false, message: `Live 연결 실패: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
 function registerIpc(): void {
   handle('settings:get', () => settings.get());
   handle('settings:update', async (patch: Partial<Settings>) => {
@@ -426,7 +478,12 @@ function registerIpc(): void {
       await applyStudentLink();
     }
     if (before.overlayBounds !== null && next.overlayBounds === null && overlay) overlay.setBounds(defaultOverlayBounds());
+    if (listening && before.liveMode !== next.liveMode) {
+      if (next.liveMode) live.start([teacherChannel()]);
+      else live.stop();
+    }
     control?.webContents.send('quota', pipeline.quotaStatus());
+    publishLive();
     return next;
   });
 
@@ -458,9 +515,10 @@ function registerIpc(): void {
     setListening(true);
     pipeline.resetContext();
     // 모델 목록을 아직 안 받았으면 받아 둔다 (연결 테스트를 건너뛴 경우). 무료 요청 수에는 잡히지 않는다.
-    if (s.geminiModelMode === 'auto' && s.geminiModels.length === 0) {
+    if ((s.geminiModelMode === 'auto' && s.geminiModels.length === 0) || (s.liveMode && s.liveModels.length === 0)) {
       try {
-        sendAll('settings', await settings.update({ geminiModels: await geminiClient(key).listModels() }));
+        const lists = await geminiClient(key).listModels();
+        sendAll('settings', await settings.update({ geminiModels: lists.generate, liveModels: lists.live, liveModel: pickLiveModel(lists.live, s.liveModel) }));
         refreshPool();
       } catch {
         // 목록을 못 받아도 기본 모델로 시작한다
@@ -468,11 +526,13 @@ function registerIpc(): void {
     }
     const first = pool.best();
     if (first) void geminiClient(key).warmUp(first);
+    live.start([teacherChannel()]);
     control?.webContents.send('quota', pipeline.quotaStatus());
     return { ok: true, message: '듣는 중' };
   });
   handle('session:stop', () => {
     setListening(false);
+    live.stop();
   });
   handle('session:state', () => listening);
   // 자막 창의 멈춤/다시 시작 버튼: 마이크는 컨트롤 패널이 열고 닫으므로 그쪽에 맡긴다 (Ctrl+Alt+P 와 같음)
@@ -481,6 +541,8 @@ function registerIpc(): void {
     control?.webContents.send('session:toggle');
   });
   handle('quota:get', () => pipeline.quotaStatus());
+  handle('live:status', () => live.status());
+  handle('live:test', () => testLive());
   handle('link:get', () => linkStatus());
   handle('shell:open', async (url: unknown) => {
     if (typeof url === 'string' && EXTERNAL_ALLOWLIST.some((prefix) => url.startsWith(prefix))) await shell.openExternal(url);
@@ -536,11 +598,21 @@ function registerIpc(): void {
     sendAll('settings', next);
   });
 
-  ipcMain.on('audio:segment', (event, channel: unknown, pcm: unknown) => {
-    if (!fromApp(event) || !listening) return;
-    if (channel !== 'teacher' && channel !== 'student' && channel !== 'auto') return;
+  ipcMain.on('audio:segment', (event, channel: unknown, pcm: unknown, utterance: unknown) => {
+    if (!fromApp(event) || !listening || !isChannel(channel)) return;
     if (!(pcm instanceof Float32Array) || pcm.length === 0 || pcm.length > MAX_SEGMENT_SAMPLES) return;
-    pipeline.enqueue(channel as Channel, pcm);
+    // Live 모드: Live 가 그 말에 답하지 않을 때만 기존 방식으로 처리하도록 맡긴다
+    if (settings.get().liveMode && isUtterance(utterance)) live.segment(channel, utterance, pcm);
+    else pipeline.enqueue(channel, pcm);
+  });
+  ipcMain.on('audio:stream', (event, channel: unknown, utterance: unknown, pcm: unknown) => {
+    if (!fromApp(event) || !listening || !isChannel(channel) || !isUtterance(utterance)) return;
+    if (!(pcm instanceof Float32Array) || pcm.length === 0 || pcm.length > MAX_STREAM_SAMPLES) return;
+    live.audio(channel, utterance, pcm);
+  });
+  ipcMain.on('audio:stream-end', (event, channel: unknown, utterance: unknown) => {
+    if (!fromApp(event) || !isChannel(channel) || !isUtterance(utterance)) return;
+    live.end(channel, utterance);
   });
 }
 
@@ -577,8 +649,29 @@ function createPipeline(): void {
     onQuota: (q) => control?.webContents.send('quota', q),
     onFatal: (message) => {
       setListening(false);
+      live.stop();
       status('error', message);
       control?.webContents.send('session:stopped', message);
+    },
+  });
+  live = new LiveEngine({
+    getSettings: () => settings.get(),
+    connect: async (model, target, handlers) => {
+      const key = await keys.get('gemini');
+      if (!key) throw new ProviderError('auth', 'Gemini API 키가 없습니다');
+      return connectLive(key, { model, target }, handlers);
+    },
+    onCaption: (caption: Caption) => {
+      sendAll('caption', caption);
+      studentLink.broadcast(caption);
+    },
+    onStatus: (message) => control?.webContents.send('status', message),
+    onLiveStatus: (s) => control?.webContents.send('live', s),
+    fallback: (channel, pcm, slot) => pipeline.enqueue(channel, pcm, slot),
+    nextSeq: () => pipeline.nextSeq(),
+    noteLatency: (ms) => {
+      pipeline.noteLatency(ms);
+      control?.webContents.send('quota', pipeline.quotaStatus());
     },
   });
 }

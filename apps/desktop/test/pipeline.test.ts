@@ -64,6 +64,30 @@ describe('Pipeline', () => {
     expect(captions[0].translations.en).toBeUndefined();
   });
 
+  it('자막 자리가 정해진 구간(Live 가 놓친 말)은 그 자리에 쓰고, 다른 구간과 합치지 않는다', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const { pipeline, captions, calls } = setup({}, async (model, wav, prompt) => {
+      calls.push({ model, prompt, wavBytes: wav.length });
+      if (calls.length <= 2) await gate;
+      return { lang: 'ko', transcript: `문장 ${calls.length}`, translations: { vi: 'câu' } };
+    });
+    expect(pipeline.nextSeq()).toBe(0); // Live 가 먼저 자리를 잡는다
+    pipeline.enqueue('teacher', second(1)); // 바쁘게 만들기
+    pipeline.enqueue('teacher', second(1));
+    await vi.advanceTimersByTimeAsync(0);
+    const endedAt = Date.now() - 4_000;
+    pipeline.enqueue('teacher', second(2), { id: 'live-a', seq: 0, ts: 123, endedAt });
+    pipeline.enqueue('teacher', second(2));
+    release();
+    await vi.runAllTimersAsync();
+    expect(calls).toHaveLength(4); // 자리가 정해진 구간은 뒤 구간과 합치지 않았다
+    const slotted = captions.find((c) => c.id === 'live-a' && c.final)!;
+    expect(slotted).toMatchObject({ seq: 0, ts: 123 });
+    expect(slotted.latencyMs).toBeGreaterThanOrEqual(4_000); // 말이 끝난 때부터 잰다
+    expect(captions.filter((c) => c.final).map((c) => c.seq).sort()).toEqual([0, 1, 2, 3]);
+  });
+
   it('요청 2개를 동시에 보내 앞 요청이 끝나길 기다리지 않는다', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
