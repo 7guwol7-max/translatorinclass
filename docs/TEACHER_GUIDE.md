@@ -1,5 +1,7 @@
 # 교실 통역 사용 안내 (교사용)
 
+> 📘 화면 그림이 있는 **사용설명서(PDF)**: [ClassroomInterpreter-Manual-ko.pdf](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Manual-ko.pdf) — 설치부터 첫 수업까지 따라 하기. 프로그램 왼쪽 메뉴 아래 **사용설명서 (PDF)** 로도 열 수 있습니다.
+
 교사 PC(Windows)에서 쓰는 실시간 통역 자막 프로그램입니다.
 선생님이 한국어로 말하면 학생 언어 자막이 **다른 창 위에 떠서** 보이고,
 학생이 모국어로 말하면 언어를 자동으로 알아듣고 한국어로 보여줍니다.

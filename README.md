@@ -10,11 +10,13 @@
 | --- | --- |
 | **설치판** | [ClassroomInterpreter-Setup.exe](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Setup.exe) |
 | **설치 없는 판** | [ClassroomInterpreter-Portable-win-x64.zip](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Portable-win-x64.zip) |
+| **사용설명서 (PDF)** | [ClassroomInterpreter-Manual-ko.pdf](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Manual-ko.pdf) — 화면 그림과 함께 설치부터 첫 수업까지 |
 
-GitHub 계정 없이 누구나 받을 수 있습니다. 사용법은 [교사용 안내](docs/TEACHER_GUIDE.md)를 보세요.
+GitHub 계정 없이 누구나 받을 수 있습니다. 처음이면 **사용설명서 (PDF)** 를 함께 받아 따라 하세요.
 
 ## 문서
-- **사용 안내(교사용)**: [docs/TEACHER_GUIDE.md](docs/TEACHER_GUIDE.md)
+- **사용설명서(PDF, 화면 그림 포함)**: [내려받기](https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Manual-ko.pdf) · 원본 [docs/manual](docs/manual/manual.html) · 만드는 법 [tools/manual](tools/manual/README.md)
+- **사용 안내(교사용, 웹 문서)**: [docs/TEACHER_GUIDE.md](docs/TEACHER_GUIDE.md)
 - 앱 코드: [apps/desktop](apps/desktop/README.md)
 - 전체 구상: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 무료 모드(교사 본인 Gemini 키): [docs/GEMINI_BYOK.md](docs/GEMINI_BYOK.md)

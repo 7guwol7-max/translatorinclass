@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>교실 통역 사용설명서</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm; }
+  @page :first { margin: 0; }
+  :root {
+    --text: #1f2430; --muted: #5d6475; --line: #e3e6ee; --soft: #f5f6fa;
+    --primary: #4f46e5; --primary-soft: #eef0ff; --red: #e5484d; --green: #16a34a; --green-soft: #e8f7ee;
+    --amber: #b45309; --amber-soft: #fff6e5;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: "Pretendard", "Malgun Gothic", sans-serif; font-size: 10.4pt; line-height: 1.65; color: var(--text); word-break: keep-all; }
+  h1, h2, h3 { line-height: 1.3; letter-spacing: -0.3px; }
+  h1 { font-size: 21pt; margin: 0 0 4mm; display: flex; align-items: center; gap: 10px; }
+  h1 .no { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff; font-size: 15pt; }
+  h2 { font-size: 13.5pt; margin: 7mm 0 2.5mm; padding-bottom: 1.5mm; border-bottom: 2px solid var(--primary-soft); }
+  h3 { font-size: 11.2pt; margin: 5mm 0 2mm; }
+  p { margin: 0 0 2.5mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin: 0.6mm 0; }
+  b, strong { font-weight: 700; }
+  a { color: var(--primary); text-decoration: none; }
+  code, .url { font-family: "DejaVu Sans Mono", monospace; font-size: 9pt; background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; word-break: break-all; }
+  kbd { display: inline-block; min-width: 22px; padding: 0 6px; border: 1px solid #c9cedb; border-bottom-width: 2px; border-radius: 5px; background: #fff; font: 600 8.6pt/16px "Pretendard", sans-serif; text-align: center; }
+  .chapter { break-before: page; }
+  .lead { font-size: 11pt; color: var(--muted); margin-bottom: 4mm; }
+  figure { margin: 3mm 0 4mm; break-inside: avoid; }
+  figure img { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 2px 8px rgba(20, 24, 40, 0.08); }
+  figure.center img { margin: 0 auto; }
+  figure.small img { max-width: 78%; }
+  figure.xsmall img { max-width: 62%; }
+  figcaption { font-size: 8.8pt; color: var(--muted); margin-top: 1.5mm; text-align: center; }
+  .n { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 50%; background: var(--red); color: #fff; font-size: 9pt; font-weight: 800; vertical-align: 1px; margin-right: 3px; flex: none; }
+  .callouts { list-style: none; padding: 0; margin: 0 0 3mm; }
+  .callouts li { display: flex; gap: 8px; align-items: baseline; margin: 1.6mm 0; }
+  .callouts li .n { position: relative; top: 2px; }
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 3mm; }
+  .steps > li { counter-increment: step; position: relative; padding-left: 34px; margin: 2.5mm 0; }
+  .steps > li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 24px; height: 24px; border-radius: 8px; background: var(--primary-soft); color: var(--primary); font-weight: 800; text-align: center; line-height: 24px; }
+  .box { border-radius: 10px; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; }
+  .tip { background: var(--green-soft); border: 1px solid #c4ead3; }
+  .tip::before { content: "도움말"; display: block; font-weight: 800; color: var(--green); font-size: 9pt; margin-bottom: 1mm; }
+  .warn { background: var(--amber-soft); border: 1px solid #f6d9a8; }
+  .warn::before { content: "주의"; display: block; font-weight: 800; color: var(--amber); font-size: 9pt; margin-bottom: 1mm; }
+  .note { background: var(--soft); border: 1px solid var(--line); }
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.6pt; break-inside: auto; }
+  th, td { border: 1px solid var(--line); padding: 1.8mm 2.4mm; vertical-align: top; text-align: left; }
+  th { background: var(--soft); font-weight: 700; }
+  tr { break-inside: avoid; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-items: start; }
+  .side { display: grid; grid-template-columns: 1.25fr 1fr; gap: 6mm; align-items: center; }
+  .keep { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  .stepblock { display: grid; grid-template-columns: 58% 1fr; gap: 5mm; align-items: center; break-inside: avoid; margin: 2mm 0 4mm; }
+  .stepblock figure { margin: 0; }
+  .stepblock .callouts { margin: 0; }
+  .stepblock .box { grid-column: 1 / -1; margin: 0; }
+  .stepblock .callouts li { margin: 1.2mm 0; }
+  .example { font-size: 8.4pt; color: var(--muted); text-align: center; margin-top: 1mm; }
+
+  /* 표지 */
+  .cover { height: 297mm; padding: 26mm 20mm 18mm; background: linear-gradient(160deg, #eef0ff 0%, #f7f8fc 45%, #e9f7ef 100%); display: flex; flex-direction: column; }
+  .cover .brand { display: flex; align-items: center; gap: 12px; font-weight: 800; font-size: 13pt; color: var(--primary); }
+  .cover .brand i { width: 40px; height: 40px; border-radius: 12px; background: var(--primary); display: inline-flex; align-items: center; justify-content: center; }
+  .cover .brand svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .cover h1 { font-size: 40pt; margin: 16mm 0 3mm; display: block; letter-spacing: -1px; }
+  .cover .sub { font-size: 15pt; color: var(--muted); margin: 0 0 12mm; }
+  .cover img { width: 100%; border-radius: 12px; box-shadow: 0 10px 30px rgba(30, 40, 90, 0.18); border: 1px solid #d9dcef; }
+  .cover .cap { text-align: center; color: var(--muted); font-size: 10pt; margin-top: 3mm; }
+  .cover .meta { margin-top: auto; display: flex; justify-content: space-between; align-items: flex-end; color: var(--muted); font-size: 10pt; }
+  .cover .meta b { color: var(--text); font-size: 12pt; }
+  .cover .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8mm; }
+  .cover .chips span { background: #fff; border: 1px solid #d9dcef; border-radius: 999px; padding: 2px 12px; font-size: 10pt; font-weight: 600; }
+
+  /* 목차 */
+  .toc { columns: 2; column-gap: 10mm; padding: 0; list-style: none; margin: 0 0 6mm; }
+  .toc li { break-inside: avoid; margin: 0 0 2mm; display: flex; gap: 8px; }
+  .toc li b { color: var(--primary); width: 22px; flex: none; }
+  .need { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin: 2mm 0 4mm; }
+  .need div { border: 1px solid var(--line); border-radius: 10px; padding: 3mm; background: #fff; break-inside: avoid; }
+  .need b { display: block; margin-bottom: 1mm; }
+  .need small { color: var(--muted); font-size: 8.8pt; line-height: 1.5; display: block; }
+
+  /* 그림(예시) */
+  .mock { border: 1px solid #cfd4e2; border-radius: 10px; background: #fff; padding: 4mm; break-inside: avoid; font-size: 9.4pt; }
+  .dl-card h4 { margin: 0 0 2mm; font-size: 12pt; }
+  .dl-card table { margin: 0 0 2mm; }
+  .dl-card td a { font-family: "DejaVu Sans Mono", monospace; font-size: 8.6pt; white-space: nowrap; }
+  .dl-card th { white-space: nowrap; }
+  .qr { display: flex; gap: 4mm; align-items: center; }
+  .qr img { width: 30mm; height: 30mm; border: 1px solid var(--line); border-radius: 6px; padding: 1mm; background: #fff; }
+  .win { border: 1px solid #9fb2cf; border-radius: 6px; overflow: hidden; background: #fff; font-size: 9pt; break-inside: avoid; }
+  .win .bar { background: #1f5fae; color: #fff; padding: 2mm 3mm; font-size: 8.5pt; }
+  .win.smart { background: #2563a8; color: #fff; border-color: #2563a8; }
+  .win.smart .body { padding: 4mm; min-height: 46mm; display: flex; flex-direction: column; }
+  .win.smart h5 { font-size: 15pt; margin: 0 0 3mm; font-weight: 400; }
+  .win.smart p { font-size: 8.8pt; margin: 0 0 2mm; opacity: 0.95; }
+  .win.smart .more { text-decoration: underline; font-weight: 700; }
+  .win.smart .btns { margin-top: auto; display: flex; justify-content: flex-end; gap: 6px; }
+  .win.smart .btns > span { border: 1px solid #fff; padding: 1.5mm 6mm; font-size: 8.8pt; }
+  .win .body { padding: 4mm; }
+  .win .btns2 { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4mm; }
+  .win .btns2 > span { border: 1px solid #a9b3c4; border-radius: 3px; padding: 1mm 5mm; font-size: 8.6pt; background: #f3f4f7; }
+  .ring { outline: 3px solid var(--red); outline-offset: 2px; border-radius: 3px; position: relative; }
+  .ring .n { position: absolute; left: -14px; top: -14px; }
+  .field-mock { border: 1px solid #a9b3c4; padding: 1mm 2mm; border-radius: 3px; font-size: 8.6pt; color: #333; margin: 2mm 0; }
+
+  /* 한눈에 보기 */
+  .quick { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .quick section { border: 1px solid var(--line); border-radius: 12px; padding: 4mm; break-inside: avoid; }
+  .quick h3 { margin-top: 0; color: var(--primary); }
+  .quick ol { padding-left: 5mm; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── 표지 ───────────────────────── -->
+<section class="cover">
+  <div class="brand"><i><svg viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="5" rx="3"/><path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg></i>교실 통역</div>
+  <h1>교실 통역 사용설명서</h1>
+  <p class="sub">선생님 PC(Windows)용 실시간 통역 자막 프로그램<br>내려받기부터 첫 수업까지 따라 하기</p>
+  <img src="img/overlay-on-slide.png" alt="수업 슬라이드 위에 뜬 통역 자막">
+  <p class="cap">선생님이 한국어로 말하면 수업 화면 위에 학생 언어 자막이 뜨고, 학생이 모국어로 말하면 한국어로 보여 줍니다.</p>
+  <div class="chips"><span>무료 (Gemini 무료 키)</span><span>설치 약 5분</span><span>처음 설정 약 3분</span><span>음성·자막을 저장하지 않음</span></div>
+  <div class="meta"><div><b>버전 0.6.0</b><br>2026년 10월</div><div style="text-align:right">최신판 내려받기<br><b>github.com/7guwol7-max/translatorinclass</b></div></div>
+</section>
+
+<!-- ───────────────────────── 목차 ───────────────────────── -->
+<section>
+  <h1>차례</h1>
+  <ol class="toc">
+    <li><b>1</b>이 프로그램은 무엇인가요</li>
+    <li><b>2</b>내려받기와 설치</li>
+    <li><b>3</b>Gemini 무료 키 만들기</li>
+    <li><b>4</b>처음 설정 (5단계)</li>
+    <li><b>5</b>수업하기</li>
+    <li><b>6</b>자막 창 위치·크기</li>
+    <li><b>7</b>수업 준비: 학생 언어·마이크·용어집</li>
+    <li><b>8</b>Live 모드 (시험 중)</li>
+    <li><b>9</b>속도와 무료 사용량</li>
+    <li><b>10</b>API 키 화면</li>
+    <li><b>11</b>학생 PC 링크 (선택)</li>
+    <li><b>12</b>개인정보와 동의</li>
+    <li><b>13</b>문제가 생겼을 때</li>
+    <li><b>14</b>한눈에 보기 (인쇄해서 붙여 두세요)</li>
+  </ol>
+
+  <h2>먼저 준비할 것</h2>
+  <div class="need">
+    <div><b>Windows PC</b><small>Windows 10 또는 11 교사용 PC. 관리자 권한은 없어도 됩니다.</small></div>
+    <div><b>마이크</b><small>노트북 내장 마이크도 됩니다. 무선·USB 마이크면 더 정확해요.</small></div>
+    <div><b>인터넷</b><small>말소리를 Google Gemini 로 보내 글자로 바꾸고 번역합니다.</small></div>
+    <div><b>Google 계정</b><small>무료 Gemini 키를 만들 때 한 번 씁니다. 카드 등록은 필요 없어요.</small></div>
+    <div><b>학생·보호자 안내</b><small>말소리가 Google 로 전송된다는 점을 알리고 동의를 받으세요 (12장 예시문).</small></div>
+    <div><b>시간 약 10분</b><small>설치 5분 + 처음 설정 3분. 한 번만 하면 됩니다.</small></div>
+  </div>
+
+  <h2>이 설명서 보는 법</h2>
+  <div class="side">
+    <figure><img src="img/wizard-2-key.png" alt="번호가 붙은 화면 예"></figure>
+    <div>
+      <p>화면 그림의 <span class="n">1</span><span class="n">2</span><span class="n">3</span> 빨간 번호는 <b>누를 곳의 순서</b>입니다. 그림 아래 설명도 같은 번호로 적었습니다.</p>
+      <p><b>굵은 글씨</b>는 화면에 보이는 버튼·메뉴 이름입니다.</p>
+      <p><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> 처럼 적힌 것은 세 키를 함께 누르는 단축키입니다.</p>
+      <p class="example">화면 그림은 예시 데이터로 찍었습니다. 실제 화면의 글꼴·숫자는 조금 다를 수 있어요.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">1</span>이 프로그램은 무엇인가요</h1>
+  <p class="lead">다문화 학생이 있는 교실에서, 선생님 말과 학생 말을 서로의 언어로 바로 보여 주는 자막 프로그램입니다.</p>
+  <ul>
+    <li><b>선생님 → 학생</b>: 선생님이 한국어로 말하면 학생 언어(베트남어·중국어·러시아어 등 26개 중 선택) 자막이 떠요.</li>
+    <li><b>학생 → 선생님</b>: 학생이 모국어로 말하면 언어를 자동으로 알아듣고 한국어로 보여 줘요.</li>
+    <li><b>다른 창 위에 떠 있음</b>: 자막 창은 PPT 쇼·동영상·전자칠판 화면 위에도 보이고, 클릭은 아래 창으로 그대로 통과해요.</li>
+    <li><b>무료</b>: 선생님의 Google Gemini 무료 키를 써요. 하루 무료 한도 안에서는 비용이 없어요.</li>
+    <li><b>저장하지 않음</b>: 음성과 자막을 파일로 남기지 않아요. 프로그램을 닫으면 자막 기록도 사라져요.</li>
+  </ul>
+  <figure><img src="img/class-listening.png" alt="수업 중 화면"><figcaption>수업 중인 프로그램 화면 — 왼쪽 큰 칸에 선생님(파란 줄)·학생(주황 줄) 자막이 차례로 쌓입니다.</figcaption></figure>
+  <div class="box note">
+    <b>어떻게 동작하나요?</b> 마이크 소리에서 말하는 부분만 골라 Google Gemini 로 보내면, Gemini 가 받아쓰고 번역해 돌려줍니다.
+    프로그램은 말이 끝나는 쉼마다 짧게 끊어 보내고(기본 방식), <b>Live 모드</b>를 켜면 말하는 동안 소리를 흘려 보내 말하는 중에도 번역을 받습니다(8장).
+  </div>
+</section>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">2</span>내려받기와 설치</h1>
+  <p class="lead">GitHub 계정 없이 누구나 받을 수 있습니다. 둘 중 하나만 받으면 됩니다. 처음이면 <b>설치판</b>을 권합니다.</p>
+
+  <h2>2-1. 내려받기</h2>
+  <ol class="steps">
+    <li>인터넷 주소창에 <code>github.com/7guwol7-max/translatorinclass</code> 를 입력하거나, 아래 QR 코드를 휴대폰으로 찍어 엽니다.</li>
+    <li>첫 화면 가운데의 <b>내려받기 (Windows)</b> 표에서 <b>ClassroomInterpreter-Setup.exe</b> 를 누릅니다.</li>
+    <li>파일이 <b>다운로드</b> 폴더에 저장됩니다.</li>
+  </ol>
+  <div class="side keep">
+    <div class="mock dl-card">
+      <h4>내려받기 (Windows)</h4>
+      <table>
+        <tr><th>설치판 <span style="color:var(--green)">권장</span></th><td><a>ClassroomInterpreter-Setup.exe</a></td></tr>
+        <tr><th>설치 없는 판</th><td><a>ClassroomInterpreter-Portable-win-x64.zip</a></td></tr>
+        <tr><th>사용설명서</th><td><a>ClassroomInterpreter-Manual-ko.pdf</a></td></tr>
+      </table>
+      <p class="example" style="text-align:left;margin:0">GitHub 페이지의 '내려받기' 표 (예시 그림)</p>
+    </div>
+    <div class="qr"><img src="img/qr-download.svg" alt="내려받기 QR 코드"><small style="color:var(--muted)">QR: 최신판 내려받기 페이지<br>(이 페이지 아래쪽 <b>Assets</b> 에도 같은 파일이 있어요)</small></div>
+  </div>
+  <table>
+    <tr><th style="width:24%">판</th><th>이럴 때</th><th style="width:34%">설정·키 저장 위치</th></tr>
+    <tr><td><b>설치판</b> (Setup.exe)</td><td>교사 PC 에 계속 두고 쓸 때. 바탕화면·시작 메뉴에 <b>교실 통역</b> 아이콘이 생깁니다.</td><td rowspan="2">두 판 모두 이 PC 의 선생님 계정에 저장 (키는 Windows 암호화 저장소)</td></tr>
+    <tr><td><b>설치 없는 판</b> (zip)</td><td>설치가 막힌 학교 PC, 잠깐 써 볼 때. 압축만 풀어 실행합니다.</td></tr>
+  </table>
+
+  <h2>2-2. 설치판 설치하기</h2>
+  <ol class="steps">
+    <li><b>다운로드</b> 폴더의 <b>ClassroomInterpreter-Setup.exe</b> 를 두 번 누릅니다.</li>
+    <li>파란 <b>Windows의 PC 보호</b> 창이 뜨면 <span class="n">1</span> <b>추가 정보</b> → <span class="n">2</span> <b>실행</b> 을 누릅니다.<br>
+      <small style="color:var(--muted)">이 프로그램은 유료 코드 서명 인증서가 없어서 Windows 가 처음 보는 앱이라고 알리는 것입니다. 이 창이 안 뜨면 바로 다음 단계로 갑니다.</small></li>
+  </ol>
+  <div class="keep">
+  <div class="two">
+    <div class="win smart"><div class="body">
+      <h5>Windows의 PC 보호</h5>
+      <p>Microsoft Defender SmartScreen에서 인식할 수 없는 앱의 시작을 차단했습니다. 이 앱을 실행하면 PC가 위험에 노출될 수 있습니다.</p>
+      <p><span class="ring more"><span class="n">1</span>추가 정보</span></p>
+      <div class="btns"><span>실행 안 함</span></div>
+    </div></div>
+    <div class="win smart"><div class="body">
+      <h5>Windows의 PC 보호</h5>
+      <p>Microsoft Defender SmartScreen에서 인식할 수 없는 앱의 시작을 차단했습니다. 이 앱을 실행하면 PC가 위험에 노출될 수 있습니다.</p>
+      <p>앱: ClassroomInterpreter-Setup.exe<br>게시자: 알 수 없는 게시자</p>
+      <div class="btns"><span class="ring"><span class="n">2</span>실행</span><span>실행 안 함</span></div>
+    </div></div>
+  </div>
+  </div>
+  <p class="example">Windows 화면을 알기 쉽게 다시 그린 예시 그림입니다.</p>
+  </div>
+  <ol class="steps" start="3" style="counter-reset: step 2">
+    <li>설치 창의 <b>설치 위치 선택</b>은 그대로 두고 <b>설치</b> 를 누릅니다. 관리자 권한 없이 선생님 계정에만 설치됩니다.</li>
+    <li>설치가 끝나면 <b>ClassroomInterpreter 실행</b>이 체크된 채로 <b>마침</b> 을 누릅니다. 바탕화면에 <b>교실 통역</b> 아이콘이 생깁니다. (설치 창에는 영어 이름 ClassroomInterpreter 로 나옵니다)</li>
+  </ol>
+  <div class="keep">
+  <div class="two">
+    <div class="win"><div class="bar">ClassroomInterpreter 설치</div><div class="body">
+      <b>설치 위치 선택</b>
+      <div class="field-mock">C:\Users\선생님\AppData\Local\Programs\ClassroomInterpreter</div>
+      <div class="btns2"><span>&lt; 뒤로</span><span class="ring"><span class="n">3</span>설치</span><span>취소</span></div>
+    </div></div>
+    <div class="win"><div class="bar">ClassroomInterpreter 설치</div><div class="body">
+      <b>설치 완료</b>
+      <p style="margin:2mm 0">☑ ClassroomInterpreter 실행</p>
+      <div class="btns2"><span class="ring"><span class="n">4</span>마침</span></div>
+    </div></div>
+  </div>
+  </div>
+  <p class="example">설치 창을 간단히 다시 그린 예시 그림입니다.</p>
+  </div>
+
+  <h2>2-3. 설치 없는 판 쓰기</h2>
+  <ol class="steps">
+    <li><b>ClassroomInterpreter-Portable-win-x64.zip</b> 을 마우스 오른쪽 단추로 누르고 <b>압축 풀기</b>(또는 <b>모두 압축 풀기</b>)를 고릅니다.</li>
+    <li>풀린 폴더의 <b>ClassroomInterpreter.exe</b> 를 두 번 누릅니다. (PC 보호 창이 뜨면 위와 같이 <b>추가 정보 → 실행</b>)</li>
+  </ol>
+  <div class="box tip">압축을 풀지 않고 zip 안에서 바로 실행하면 제대로 동작하지 않습니다. 꼭 압축을 푼 뒤 실행하세요.</div>
+
+  <h2>2-4. 새 버전으로 바꾸기 · 지우기</h2>
+  <ul>
+    <li><b>새 버전</b>: 같은 주소에서 새 설치판을 받아 그대로 설치하면 덮어씁니다. 키·설정은 그대로 남습니다.</li>
+    <li><b>지우기</b>: Windows <b>설정 → 앱 → 설치된 앱</b>에서 <b>ClassroomInterpreter</b> → <b>제거</b>.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">3</span>Gemini 무료 키 만들기</h1>
+  <p class="lead">프로그램이 Google Gemini 를 쓰려면 선생님 본인의 무료 'API 키'가 하나 필요합니다. 처음 한 번만 만들면 됩니다.</p>
+  <ol class="steps">
+    <li>인터넷에서 <code>aistudio.google.com/apikey</code> 를 엽니다. (처음 설정 2단계의 <b>Google AI Studio</b> 를 눌러도 열립니다)</li>
+    <li>Google 계정으로 로그인합니다. 처음이면 이용 약관에 동의합니다.</li>
+    <li><b>API 키 만들기</b> (영어 화면이면 <b>Create API key</b>) 를 누릅니다. 프로젝트를 고르라고 하면 기본값 그대로 둡니다.</li>
+    <li>만들어진 키 옆의 <b>복사</b> 단추를 누릅니다. 키는 <code>AIza…</code> 또는 <code>AQ.…</code> 로 시작하는 긴 글자입니다.</li>
+    <li>교실 통역의 <b>처음 설정 → Gemini 키</b> 칸(또는 <b>API 키</b> 메뉴)에 붙여넣고 <b>저장하고 확인</b>을 누릅니다 (4장).</li>
+  </ol>
+  <div class="box warn">
+    <ul style="margin:0">
+      <li><b>카드를 등록하지 마세요.</b> 무료 등급으로 충분하며, 카드 등록(결제 연결)을 하면 유료 등급이 됩니다.</li>
+      <li><b>키는 비밀번호처럼</b> 다루세요. 다른 사람에게 보내거나 다른 선생님과 같이 쓰지 마세요 (무료 한도가 같이 줄어듭니다).</li>
+      <li>학교 Google 계정에서 AI Studio 가 막혀 있으면 학교 관리자에게 문의하거나 개인 Google 계정으로 만드세요.</li>
+    </ul>
+  </div>
+  <div class="box note">
+    <b>무료 한도는?</b> 하루에 보낼 수 있는 요청 수와 1분에 보낼 수 있는 요청 수가 모델마다 정해져 있습니다.
+    프로그램이 여러 모델을 묶어 쓰고 남은 양을 <b>"오늘 남은 무료 사용: 약 3시간"</b>처럼 보여 주므로 따로 계산할 필요는 없습니다(9장).
+    한도는 매일 <b>오후 4~5시(한국 시간)</b>에 다시 채워집니다.
+  </div>
+</section>
+
+<!-- ───────────────────────── 4 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">4</span>처음 설정 (5단계)</h1>
+  <p class="lead">설치 후 처음 실행하면 <b>처음 설정</b> 창이 자동으로 뜹니다. 순서대로 따라 하면 3분이면 끝납니다.</p>
+
+  <h2>1단계 · 시작</h2>
+  <div class="stepblock">
+    <figure><img src="img/wizard-1-start.png" alt="처음 설정 1단계"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>안내를 읽고 <b>학생·보호자에게 안내하고 동의를 받았습니다</b> 칸에 표시합니다. (예시문은 12장)</span></li>
+      <li><span class="n">2</span><span><b>다음</b>을 누릅니다.</span></li>
+    </ul>
+  </div>
+
+  <h2>2단계 · Gemini 키</h2>
+  <div class="stepblock">
+    <figure><img src="img/wizard-2-key.png" alt="처음 설정 2단계"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>키가 없으면 <b>Google AI Studio</b> 를 눌러 키를 만듭니다 (3장).</span></li>
+      <li><span class="n">2</span><span>복사한 키를 칸에 붙여넣습니다 (<kbd>Ctrl</kbd> <kbd>V</kbd>). 키는 점으로 가려져 보입니다.</span></li>
+      <li><span class="n">3</span><span><b>저장하고 확인</b>을 누르면 초록 글씨로 <b>연결됐어요 ✓</b> 가 나옵니다. 그다음 <b>다음</b>.</span></li>
+    </ul>
+    <div class="box tip">빨간 글씨로 "키가 올바르지 않습니다"가 나오면 키를 다시 복사해 붙여넣으세요. 앞뒤 빈칸이 들어가지 않게 AI Studio 의 복사 단추를 쓰면 가장 확실합니다.</div>
+  </div>
+
+  <h2>3단계 · 학생 언어</h2>
+  <div class="stepblock">
+    <figure><img src="img/wizard-3-langs.png" alt="처음 설정 3단계"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>학급 학생들이 쓰는 언어를 눌러 고릅니다 (여러 개 가능). 선생님 말은 이 언어들로 번역되고, 학생 말은 이 중에서 알아듣습니다. 꼭 필요한 언어만 고르면 가장 빠릅니다.</span></li>
+    </ul>
+  </div>
+
+  <h2>4단계 · 마이크</h2>
+  <div class="stepblock">
+    <figure><img src="img/wizard-4-mic.png" alt="처음 설정 4단계"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>쓸 마이크를 고릅니다. 잘 모르면 <b>기본값</b>을 그대로 둡니다.</span></li>
+      <li><span class="n">2</span><span>마이크가 하나면 <b>교사·학생 같이 쓰기</b>(한국어면 선생님, 다른 언어면 학생으로 구분). 선생님만 쓰는 무선 마이크면 <b>교사 전용</b>.</span></li>
+      <li><span class="n">3</span><span>아무 말이나 해 보세요. <b>막대가 움직이면</b> 잘 들리는 것입니다. 전혀 안 움직이면 13장 '마이크' 항목을 보세요.</span></li>
+    </ul>
+  </div>
+
+  <h2>5단계 · 완료</h2>
+  <div class="stepblock">
+    <figure><img src="img/wizard-5-done.png" alt="처음 설정 5단계"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span><b>수업 화면으로</b>를 누르면 끝납니다.</span></li>
+    </ul>
+    <div class="box note">처음 설정은 언제든 왼쪽 메뉴 아래 <b>처음 설정 다시 하기</b>로 다시 열 수 있습니다. <b>나중에 할게요</b>로 건너뛴 경우에도 같습니다.</div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 5 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">5</span>수업하기</h1>
+
+  <h2>5-1. 수업 화면</h2>
+  <figure><img src="img/class-ready.png" alt="수업 시작 전 화면"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span><b>큰 마이크 버튼</b>을 누르면 수업(듣기)이 시작됩니다. 위쪽 오른쪽 <b>수업 시작</b> 버튼, 단축키 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> 도 같습니다.</span></li>
+    <li><span class="n">2</span><span><b>빠른 설정</b>: 학생 언어·마이크·자막 창 위치가 보이고, 누르면 그 설정 화면으로 갑니다.</span></li>
+    <li><span class="n">3</span><span><b>오늘 남은 무료 사용</b>: 지금 속도로 오늘 몇 시간 더 쓸 수 있는지 보여 줍니다.</span></li>
+    <li><span class="n">4</span><span><b>왼쪽 메뉴</b>: 수업 · 수업 준비 · 설정 화면으로 이동합니다. 맨 아래에 단축키와 <b>사용설명서 (PDF)</b> 링크가 있습니다.</span></li>
+  </ul>
+
+  <h2 class="chapter">5-2. 수업 중</h2>
+  <figure><img src="img/class-listening.png" alt="수업 중 화면"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span>버튼이 빨갛게 바뀌고 <b>듣고 있어요</b>가 나옵니다. 다시 누르면 수업이 끝납니다.</span></li>
+    <li><span class="n">2</span><span><b>자막이 말 끝나고 약 N초 뒤 나와요</b>: 지금 자막이 늦는 정도입니다. Live 모드면 앞에 <b>Live ·</b> 가 붙습니다.</span></li>
+    <li><span class="n">3</span><span><b>실시간 자막</b>: 선생님 말(파란 줄)은 학생 언어로, 학생 말(주황 줄)은 한국어로 나옵니다. 받는 중인 자막은 흐리게 보이다가 다 받으면 진해집니다.</span></li>
+  </ul>
+  <div class="box tip">쉬는 시간이나 개인적인 이야기를 할 때는 <b>멈춤</b>(자막 창 도구 막대) 또는 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> 로 잠시 멈추세요. 멈춘 동안에는 소리를 보내지 않습니다.</div>
+
+  <h2 class="chapter">5-3. 자막 창</h2>
+  <p>수업을 시작하면 화면 <b>아래 가운데</b>에 반투명 자막 창이 뜹니다. 프로젝터가 연결돼 있으면 프로젝터 화면에 뜹니다.</p>
+  <figure><img src="img/overlay-on-slide.png" alt="슬라이드 위 자막 창"><figcaption>PPT 쇼·동영상을 전체 화면으로 켜도 자막이 위에 보입니다. 최근 자막 2개가 보이고, 20초 동안 말이 없으면 잠시 사라집니다.</figcaption></figure>
+  <ul>
+    <li>선생님 말: 위 줄 한국어, 아래 줄들이 학생 언어 (자막 창에는 최대 3개 언어)</li>
+    <li>학생 말: 🙋 표시와 함께 한국어 번역이 크게, 학생이 한 말이 작게</li>
+    <li>자막 창은 클릭을 아래 창으로 통과시킵니다. PPT 를 넘기거나 판서할 때 방해되지 않습니다.</li>
+  </ul>
+
+  <h2>5-4. 자막 창 도구 막대</h2>
+  <p>자막 위에 마우스를 올리면 오른쪽 위에 <b>도구 막대</b>가 나타납니다.</p>
+  <figure><img src="img/overlay-toolbar.png" alt="자막 창 도구 막대"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span><b>멈춤 / 다시 시작</b>: 듣기를 잠시 멈추거나 다시 시작합니다.</span></li>
+    <li><span class="n">2</span><span><b>이동</b>: 누른 채로 끌면 자막 창이 따라 움직입니다.</span></li>
+    <li><span class="n">3</span><span><b>A− / A+</b>: 글자를 작게 / 크게.</span></li>
+    <li><span class="n">4</span><span><b>숨기기</b>: 자막 창을 숨깁니다. 다시 보이려면 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd>.</span></li>
+    <li><span class="n">5</span><span><b>오른쪽 아래 모서리</b>를 끌면 크기가 바뀝니다.</span></li>
+  </ul>
+
+  <h2>5-5. 단축키</h2>
+  <table>
+    <tr><th style="width:38%">단축키</th><th>하는 일</th></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd></td><td>수업(듣기) 시작 / 멈춤 — 프로그램이 뒤에 있어도 됩니다</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd></td><td>자막 창 숨기기 / 보이기</td></tr>
+    <tr><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>M</kbd></td><td>자막 창 전체를 끌어서 옮기기·크기 바꾸기 → 다 되면 한 번 더 눌러 끝내기</td></tr>
+  </table>
+
+  <h2>5-6. 수업 끝내기</h2>
+  <p>큰 버튼(빨간색) 또는 위쪽 <b>수업 끝내기</b>를 누릅니다. 화면의 자막 기록은 프로그램을 닫으면 사라집니다. 다음 수업은 다시 큰 버튼만 누르면 됩니다.</p>
+</section>
+
+<!-- ───────────────────────── 6 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">6</span>자막 창 위치·크기</h1>
+  <p class="lead">왼쪽 메뉴 <b>자막 창</b>에서 자막이 뜰 화면과 자리를 고릅니다. 누르는 즉시 옮겨집니다.</p>
+  <figure><img src="img/page-overlay.png" alt="자막 창 설정 화면"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span><b>어느 화면에?</b>: 프로젝터·TV 가 연결돼 있으면 화면을 고릅니다. (Windows 디스플레이 설정이 <b>확장</b>일 때 화면이 2개로 보입니다. <b>복제</b>면 하나로 보입니다)</span></li>
+    <li><span class="n">2</span><span><b>어디에?</b>: 모니터 그림의 9칸 중 하나를 누르면 자막 창이 그 자리로 갑니다. 칠판 판서를 가리면 <b>위 가운데</b>도 좋습니다.</span></li>
+    <li><span class="n">3</span><span><b>크기</b>: 너비·높이·글자 크기를 밀대로 바꿉니다. 교실 뒤에서도 보이게 글자를 키우세요 (보통 30~40).</span></li>
+    <li><span class="n">4</span><span><b>처음 위치로</b>: 자막 창이 안 보이는 곳으로 갔을 때 누릅니다.</span></li>
+  </ul>
+  <div class="box tip"><b>한국어 원문도 보이기</b>를 끄면 자막 창에 학생 언어만 보여 자막이 짧아집니다.</div>
+</section>
+
+<!-- ───────────────────────── 7 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">7</span>수업 준비: 학생 언어·마이크·용어집</h1>
+
+  <h2>7-1. 학생 언어</h2>
+  <div class="stepblock">
+    <figure><img src="img/page-langs.png" alt="학생 언어 화면"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>학급 학생들이 쓰는 언어를 고릅니다. 다시 누르면 빠집니다 (최소 1개).</span></li>
+      <li><span class="n">2</span><span><b>자막 창에 보일 언어</b>를 최대 3개까지 고릅니다. 고르지 않은 언어도 화면 기록과 학생 PC 링크에는 나옵니다.</span></li>
+    </ul>
+  </div>
+
+  <h2>7-2. 마이크</h2>
+  <div class="stepblock">
+    <figure><img src="img/page-mic.png" alt="마이크 화면"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span><b>교사 마이크</b>를 고릅니다.</span></li>
+      <li><span class="n">2</span><span>마이크가 하나면 <b>교사·학생 같이 쓰기</b>, 선생님 전용 마이크면 <b>교사 전용</b>.</span></li>
+      <li><span class="n">3</span><span><b>마이크 시험하기</b>를 누르고 말해 보면 막대가 움직입니다. 끝나면 <b>시험 끝내기</b>.</span></li>
+      <li><span class="n">4</span><span>(선택) 학생 쪽에 마이크를 하나 더 두면 <b>학생 마이크</b>로 고릅니다. 이 마이크 소리는 항상 학생 말로 처리됩니다.</span></li>
+    </ul>
+    <div class="box tip">마이크를 새로 꽂았으면 <b>마이크 목록 새로고침</b>을 누르세요. 교실이 시끄러우면 선생님 가까이 둘 수 있는 무선 마이크가 가장 정확합니다.</div>
+  </div>
+
+  <h2>7-3. 교과 용어집</h2>
+  <div class="stepblock">
+    <figure><img src="img/page-glossary.png" alt="교과 용어집 화면"></figure>
+    <ul class="callouts">
+      <li><span class="n">1</span><span>한 줄에 하나씩 <code>한국어 = 번역어</code> 로 적으면, 번역할 때 그 용어를 그대로 씁니다. 여러 언어를 이어 적어도 됩니다.<br><code>광합성 = photosynthesis = quang hợp = 光合作用</code><br><small style="color:var(--muted)">용어집은 기본 방식에서 쓰입니다. Live 모드에서는 쓰이지 않습니다.</small></span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ───────────────────────── 8 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">8</span>Live 모드 (시험 중)</h1>
+  <p class="lead">말을 쉼에서 끊어 보내는 대신, <b>말하는 동안 소리를 Gemini Live 로 흘려 보내</b> 말하는 중에도 번역이 나오게 하는 방식입니다. 기본은 꺼져 있습니다.</p>
+  <figure><img src="img/page-speed-live.png" alt="Live 모드 설정"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span><b>말하는 동안 바로 번역하기</b>를 켭니다. 수업 중에 켜고 꺼도 바로 바뀝니다.</span></li>
+    <li><span class="n">2</span><span><b>Live 번역 모델</b>: 보통 그대로 둡니다. 목록은 <b>API 키 → Gemini 연결 테스트</b>를 누르면 이 키로 쓸 수 있는 것으로 채워집니다.</span></li>
+    <li><span class="n">3</span><span><b>Live 연결 테스트</b>: 이 PC·이 키로 Live 를 쓸 수 있는지 확인합니다. 초록 글씨 <b>Live 연결 성공</b>이 나오면 됩니다.</span></li>
+    <li><span class="n">4</span><span>지금 상태가 표시됩니다 (아래 표).</span></li>
+  </ul>
+  <table>
+    <tr><th style="width:36%">상태 표시</th><th>뜻</th></tr>
+    <tr><td>꺼짐</td><td>Live 모드를 쓰지 않습니다 (기본 방식).</td></tr>
+    <tr><td>켜짐 · 수업 시작 때 연결</td><td>수업을 시작하면 연결합니다.</td></tr>
+    <tr><td>연결 중 (1/4)</td><td>학생 언어마다 연결을 여는 중입니다.</td></tr>
+    <tr><td><span style="color:var(--green);font-weight:700">Live 로 자막 만드는 중 (4/4)</span></td><td>모든 연결이 열려 Live 로 자막을 만들고 있습니다.</td></tr>
+    <tr><td><span style="color:var(--amber);font-weight:700">지금 방식으로 바뀜</span></td><td>연결이 안 되거나 답이 없어 이번 수업은 기본 방식으로 자막을 만듭니다. 표시에 마우스를 올리면 이유가 보입니다.</td></tr>
+  </table>
+  <h3>알아 두세요</h3>
+  <ul>
+    <li><b>학생 언어마다 연결을 하나씩</b> 엽니다 (교사·학생이 같은 마이크를 쓰면 한국어용 하나 더). 학생 언어가 많을수록 연결이 많아집니다.</li>
+    <li><b>안 되면 자동으로 기본 방식으로</b>: 어떤 말에 4초 안에 답이 없거나 번역이 빠지면, 그 말은 기본 방식으로 다시 만들어 같은 자리에 씁니다. 여러 번 연달아 안 되면 그 수업은 기본 방식으로 이어 가고, 다음 수업에서 다시 Live 를 써 봅니다.</li>
+    <li>수업 화면 위쪽에 <b>Live · 자막이 말 끝나고 약 N초</b>가 보이면 Live 로 동작 중입니다. 이 숫자를 Live 를 끈 때와 비교해 보세요.</li>
+    <li>Live 모드에서는 <b>용어집</b>과 <b>Claude 번역</b>이 쓰이지 않습니다. <b>오늘 남은 무료 사용</b>에는 Live 사용량이 들어가지 않습니다.</li>
+    <li>학교 네트워크가 막으면 "Live 서버에 연결하지 못했습니다 (HTTP …)"가 나옵니다. 이때는 Live 모드를 끄고 쓰세요.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 9 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">9</span>속도와 무료 사용량</h1>
+  <p class="lead">왼쪽 메뉴 <b>속도·무료 사용량</b>에서 자막 속도와 오늘 사용량을 봅니다. 처음에는 바꾸지 않아도 됩니다.</p>
+  <figure class="xsmall center"><img src="img/page-speed.png" alt="속도와 무료 사용량 화면"></figure>
+  <table>
+    <tr><th style="width:22%">자막 속도</th><th>자막이 나오는 때</th><th>무료 사용량</th></tr>
+    <tr><td><span class="n">1</span><b>빠르게</b> (기본)</td><td>말이 끝나고 보통 2~5초</td><td>짧게 끊어 자주 보내므로 가장 많이 씀</td></tr>
+    <tr><td><b>보통</b></td><td>2~3초 더 늦음</td><td>짧은 말을 모아 보냄</td></tr>
+    <tr><td><b>절약</b></td><td>5~10초 더 늦음</td><td>길게 묶어 약 4분의 1만 씀</td></tr>
+  </table>
+  <ul>
+    <li><b>번역</b>: 기본은 <b>빠르고 넉넉하게</b>. 번역이 어색하면 <b>더 자연스러운 번역</b>을 고릅니다 (조금 느리고 무료 한도가 적음).</li>
+    <li><b>느리면 다른 모델로 한 번 더 보내기</b>: 무료 서버가 가끔 늦을 때 다른 모델에 같이 물어 먼저 온 답을 씁니다. 사용량이 아까우면 끕니다.</li>
+    <li><b>오늘 무료 사용량</b>: 모델마다 오늘 쓴 양과 최근 응답 시간이 보입니다. 한 모델이 막혀도 다른 모델로 이어 가므로 걱정하지 않아도 됩니다.</li>
+    <li>오늘 남은 양이 20% 아래로 내려가면 자동으로 <b>절약</b>이 됩니다. 한도는 매일 <b>오후 4~5시</b>에 다시 채워집니다.</li>
+  </ul>
+  <div class="box tip">오전 수업이 많은 날은 전날 오후 4시 이후에 많이 쓰지 않는 것이 좋습니다. 하루 한도가 그 시각에 채워지기 때문입니다.</div>
+</section>
+
+<!-- ───────────────────────── 10 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">10</span>API 키 화면</h1>
+  <p class="lead">왼쪽 메뉴 <b>API 키</b>에서 키를 바꾸거나 연결을 다시 확인합니다.</p>
+  <figure class="small center"><img src="img/page-keys.png" alt="API 키 화면"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span>새 키를 붙여넣습니다.</span></li>
+    <li><span class="n">2</span><span><b>저장</b>: 키를 이 PC 의 Windows 암호화 저장소에 저장합니다. 화면에는 <code>AIza…7Qx4</code> 처럼 가려서만 보입니다.</span></li>
+    <li><span class="n">3</span><span><b>연결 테스트</b>: 키가 되는지, 어떤 모델(Live 모델 포함)을 쓸 수 있는지 확인합니다.</span></li>
+    <li><span class="n">4</span><span>결과가 아래에 나옵니다. 초록 글씨면 정상입니다.</span></li>
+  </ul>
+  <table>
+    <tr><th style="width:24%">키</th><th>쓰임</th></tr>
+    <tr><td><b>Gemini</b> (필수·무료)</td><td>받아쓰기·번역. 이 키 하나면 모든 기본 기능을 씁니다.</td></tr>
+    <tr><td><b>Claude</b> (선택·유료)</td><td>번역만 Claude 로 하고 싶을 때. <b>속도·무료 사용량 → 번역 엔진</b>에서 Claude 를 고릅니다. 결제가 필요합니다.</td></tr>
+    <tr><td><b>AI 허브</b> (선택·무료)</td><td>왼쪽 메뉴 <b>AI 허브 데이터</b>에서 학급 언어 번역 데이터셋을 찾아볼 때. 자막 기능과는 상관없습니다.</td></tr>
+  </table>
+</section>
+
+<!-- ───────────────────────── 11 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">11</span>학생 PC 링크 (선택)</h1>
+  <p class="lead">같은 학교 네트워크의 학생 PC·태블릿에서 링크를 열면, 학생이 자기 언어 자막만 크게 볼 수 있습니다.</p>
+  <figure class="small center"><img src="img/page-link.png" alt="학생 PC 링크 화면"></figure>
+  <ul class="callouts">
+    <li><span class="n">1</span><span><b>학생 PC 링크 열기</b>를 켭니다. 처음 켤 때 <b>Windows 방화벽</b> 창이 뜨면 <b>허용</b>을 누릅니다.</span></li>
+    <li><span class="n">2</span><span>나오는 주소를 <b>복사</b>해 학생 PC 의 Chrome·Edge 주소창에 붙여넣습니다. 학생은 화면의 🌐 에서 자기 언어를 고릅니다.</span></li>
+  </ul>
+  <ul>
+    <li>학생 PC 가 교사 PC 와 <b>같은 학교 네트워크</b>에 있어야 합니다. 학교 네트워크가 PC 끼리 통신을 막아 두었으면 열리지 않을 수 있습니다.</li>
+    <li>링크를 켤 때마다 주소가 바뀝니다. 지난 주소로는 들어올 수 없습니다.</li>
+  </ul>
+  <div class="box warn">Gemini API 약관은 <b>만 18세 미만이 이용하는 서비스</b>에 쓰는 것을 금지합니다. 학생이 미성년자라면 이 기능은 켜지 않는 것을 권장합니다. (교사 화면과 자막 창은 선생님이 쓰는 것이므로 해당하지 않습니다)</div>
+</section>
+
+<!-- ───────────────────────── 12 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">12</span>개인정보와 동의</h1>
+  <ul>
+    <li>수업 중 말소리는 Google Gemini 로 전송됩니다. <b>무료 등급</b>에서는 Google 이 보낸 내용을 제품 개선에 쓸 수 있고, 사람이 검토할 수 있습니다.</li>
+    <li>이 프로그램은 <b>음성과 자막을 파일로 저장하지 않습니다.</b> 화면의 자막 기록은 프로그램을 닫으면 사라집니다. (저장되는 것: 설정, 오늘 사용량, 암호화된 키)</li>
+    <li>개인적인 상담·생활 지도 이야기를 할 때는 <b>멈춤</b>(<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd>)으로 듣기를 멈추세요.</li>
+    <li>무료 등급의 제품 개선 활용이 부담되면, 같은 키에 결제를 연결해 유료 등급으로 쓸 수 있습니다 (유료 등급은 제품 개선에 쓰지 않음).</li>
+  </ul>
+  <h2>가정통신문 안내 예시</h2>
+  <div class="box note">
+    우리 반은 외국어를 쓰는 학생의 수업 이해를 돕기 위해 실시간 통역 자막 프로그램을 사용합니다.
+    수업 중 말소리가 Google Gemini(무료 서비스)로 전송되어 글자로 바뀌고 번역되며,
+    Google 이 서비스 개선을 위해 이 내용을 활용할 수 있습니다. 프로그램은 음성이나 자막을 따로 저장하지 않습니다.
+    궁금한 점이나 원하지 않으시는 경우 담임교사에게 알려 주세요.
+  </div>
+  <p class="example" style="text-align:left">학교 사정에 맞게 고쳐 쓰세요. 학교의 개인정보 담당자와 먼저 상의하면 좋습니다.</p>
+</section>
+
+<!-- ───────────────────────── 13 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">13</span>문제가 생겼을 때</h1>
+  <table>
+    <tr><th style="width:36%">이럴 때</th><th>이렇게 해 보세요</th></tr>
+    <tr><td><b>설치</b>: "Windows의 PC 보호" 창이 뜸</td><td><b>추가 정보 → 실행</b> (2-2). 코드 서명 인증서가 없어서 뜨는 안내입니다.</td></tr>
+    <tr><td><b>설치</b>: 학교 보안 프로그램이 설치를 막음</td><td><b>설치 없는 판</b>(zip)을 써 보거나 정보 담당 선생님께 문의하세요.</td></tr>
+    <tr><td><b>마이크</b>: "마이크를 열지 못했습니다"</td><td>Windows <b>설정 → 개인 정보 및 보안 → 마이크</b>에서 <b>마이크 액세스</b>와 <b>데스크톱 앱이 마이크에 액세스하도록 허용</b>을 켭니다. 그다음 <b>마이크</b> 메뉴에서 다시 고릅니다.</td></tr>
+    <tr><td><b>마이크</b>: 막대가 움직이지 않음</td><td><b>마이크 → 마이크 목록 새로고침</b> 후 맞는 장치를 고릅니다. 마이크의 음소거 스위치도 확인하세요.</td></tr>
+    <tr><td><b>키</b>: "키가 올바르지 않습니다"</td><td>AI Studio 에서 키를 다시 복사해 <b>API 키 → Gemini</b>에 저장 → <b>연결 테스트</b>.</td></tr>
+    <tr><td><b>키</b>: "이 키로 쓸 수 있는 Gemini 모델이 없습니다"</td><td><b>API 키 → 연결 테스트</b>를 눌러 모델 목록을 다시 받습니다.</td></tr>
+    <tr><td><b>자막</b>: 자막이 10초 넘게 늦음</td><td>무료 서버가 붐비는 때입니다. 잠시 뒤 나아집니다. 계속되면 <b>Live 모드</b>를 켜 보거나(8장) 번역을 <b>빠르고 넉넉하게</b>로 바꿉니다.</td></tr>
+    <tr><td><b>자막</b>: "모든 모델이 분당 요청 한도에 걸려…"가 자주 뜸</td><td><b>속도·무료 사용량 → 자막 속도</b>를 <b>보통</b>으로 바꿉니다.</td></tr>
+    <tr><td><b>자막</b>: 무료 사용량이 너무 빨리 줄어듦</td><td>자막 속도를 <b>보통·절약</b>으로, 또는 <b>느리면 다른 모델로 한 번 더 보내기</b>를 끕니다. 학생 언어는 필요한 것만 고르세요.</td></tr>
+    <tr><td><b>자막 창</b>: PPT·영상 위에 안 보임</td><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd> 를 두 번 눌러 다시 띄웁니다.</td></tr>
+    <tr><td><b>자막 창</b>: 안 보이는 곳으로 감, 프로젝터를 뺐음</td><td><b>자막 창 → 처음 위치로</b>.</td></tr>
+    <tr><td><b>Live</b>: "Live 모드가 안 돼서 … 지금까지 쓰던 방식으로"</td><td>알림 끝의 이유를 보세요. "쓸 수 없는 Live 모델" → <b>API 키 → 연결 테스트</b> 후 다른 모델 고르기 · "HTTP …" → 학교 네트워크가 막는 경우라 Live 모드 끄기 · "한도" → 그날은 Live 모드 끄기.</td></tr>
+    <tr><td><b>Live</b>: 오히려 늦음</td><td><b>속도·무료 사용량 → Live 모드</b>를 끄면 기본 방식으로 돌아갑니다.</td></tr>
+    <tr><td><b>학생 링크</b>: 학생 PC 에서 안 열림</td><td>같은 네트워크인지, 방화벽을 허용했는지 확인하고 <b>학생 PC 링크</b>에서 포트를 바꿔 봅니다.</td></tr>
+    <tr><td>그 밖의 문제</td><td>프로그램을 닫았다 다시 엽니다. 그래도 안 되면 새 버전을 받아 설치합니다 (2-4). 화면 오른쪽 아래·<b>알림</b> 칸의 문구를 메모해 두면 원인을 찾기 쉽습니다.</td></tr>
+  </table>
+</section>
+
+<!-- ───────────────────────── 14 ───────────────────────── -->
+<section class="chapter">
+  <h1><span class="no">14</span>한눈에 보기</h1>
+  <p class="lead">이 쪽을 인쇄해 교사용 책상에 붙여 두세요.</p>
+  <div class="quick">
+    <section>
+      <h3>처음 한 번</h3>
+      <ol>
+        <li><b>설치판</b> 내려받아 설치 (PC 보호 창 → 추가 정보 → 실행)</li>
+        <li><code>aistudio.google.com/apikey</code> 에서 무료 키 만들기</li>
+        <li>처음 설정: 동의 → 키 붙여넣기 → 학생 언어 → 마이크</li>
+        <li>학생·보호자에게 안내 (12장)</li>
+      </ol>
+    </section>
+    <section>
+      <h3>수업마다</h3>
+      <ol>
+        <li><b>교실 통역</b> 실행</li>
+        <li>큰 마이크 버튼 또는 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd></li>
+        <li>PPT·영상 위에 자막이 뜨는지 확인</li>
+        <li>끝나면 다시 큰 버튼 (빨간색)</li>
+      </ol>
+    </section>
+    <section>
+      <h3>단축키</h3>
+      <p><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> 듣기 시작 / 멈춤<br>
+      <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd> 자막 숨기기 / 보이기<br>
+      <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>M</kbd> 자막 창 옮기기 시작 / 끝</p>
+      <p>자막 위에 마우스 → <b>멈춤 · 이동 · A− A+ · 숨기기</b></p>
+    </section>
+    <section>
+      <h3>기억할 것</h3>
+      <ul>
+        <li>무료 한도는 매일 <b>오후 4~5시</b>에 다시 채워짐</li>
+        <li>개인적인 이야기 → <b>멈춤</b></li>
+        <li>자막이 늦으면 → 위쪽 지연 숫자 확인, <b>Live 모드</b> 시험</li>
+        <li>자막 창이 사라지면 → <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd></li>
+      </ul>
+    </section>
+  </div>
+  <div class="box note" style="margin-top:6mm">
+    <div class="qr"><img src="img/qr-download.svg" alt="QR"><div><b>새 버전·설명서 받기</b><br><code>github.com/7guwol7-max/translatorinclass</code><br><small style="color:var(--muted)">프로그램 왼쪽 메뉴 아래 <b>사용설명서 (PDF)</b>로도 이 설명서를 열 수 있습니다.</small></div></div>
+  </div>
+</section>
+
+</body>
+</html>

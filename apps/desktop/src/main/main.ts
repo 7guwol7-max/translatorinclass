@@ -49,6 +49,8 @@ const EXTERNAL_ALLOWLIST = [
   'https://platform.claude.com/',
   'https://aihub.or.kr/',
   'https://www.aihub.or.kr/',
+  // 사용설명서·새 버전 받기
+  'https://github.com/7guwol7-max/translatorinclass/',
 ];
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
