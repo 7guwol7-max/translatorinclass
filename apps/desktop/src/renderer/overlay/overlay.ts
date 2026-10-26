@@ -80,41 +80,37 @@ function applySettings(next: Settings): void {
 }
 
 // ── 마우스를 올리면 도구 막대 ──────────────────────────────────
-// 창은 평소 클릭을 아래로 통과시키지만(Windows 에서도 마우스 움직임은 전달됨),
-// 도구 막대·모서리 위에 있을 때만 클릭을 받도록 바꾼다.
+// 창은 평소 클릭을 아래로 통과시키고, 도구 막대·모서리 위에 있을 때만 클릭을 받는다.
+// 그 판단은 main 이 커서 자리로 한다. 이 화면의 마우스 이벤트로 판단하면, 클릭 통과를 켜고 끌 때마다
+// '마우스가 창을 나감' 이벤트가 와서 클릭 가능/통과가 1초에 수십 번 오가고, 그 사이 누른 클릭은 뒤 창으로 가 버린다.
 
-let interactive = false;
 let dragging: 'move' | 'resize' | null = null;
 let hoverTimer: ReturnType<typeof setTimeout> | undefined;
 
-function setInteractive(on: boolean): void {
-  if (on === interactive) return;
-  interactive = on;
-  api.setOverlayInteractive(on);
+/** 도구 막대·모서리의 자리(창 안 좌표)를 main 에 알린다 */
+function reportTools(): void {
+  const rects = [...document.querySelectorAll<HTMLElement>('.tool')].map((el) => ({ x: el.offsetLeft, y: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight }));
+  api.setOverlayTools(rects);
 }
 
 function showTools(): void {
   frame.classList.add('hover');
   stack.classList.remove('faded');
   clearTimeout(hoverTimer);
-  hoverTimer = setTimeout(() => {
-    if (!dragging && !interactive) frame.classList.remove('hover');
-  }, HOVER_HIDE_MS);
 }
 
-document.addEventListener('mousemove', (e) => {
-  showTools();
-  if (dragging) return;
-  const overTool = (e.target as Element | null)?.closest('.tool') !== null;
-  setInteractive(overTool);
-});
-
-document.addEventListener('mouseleave', () => {
-  if (dragging) return;
-  setInteractive(false);
+function hideToolsSoon(ms: number): void {
   clearTimeout(hoverTimer);
-  hoverTimer = setTimeout(() => frame.classList.remove('hover'), 400);
+  hoverTimer = setTimeout(() => {
+    if (!dragging) frame.classList.remove('hover');
+  }, ms);
+}
+
+api.onOverlayHover((on) => {
+  if (on) showTools();
+  else hideToolsSoon(HOVER_HIDE_MS);
 });
+window.addEventListener('resize', reportTools);
 
 function pointerDrag(handle: HTMLElement, kind: 'move' | 'resize'): void {
   handle.addEventListener('pointerdown', (e) => {
@@ -134,8 +130,10 @@ function pointerDrag(handle: HTMLElement, kind: 'move' | 'resize'): void {
   };
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
-  // 배율이 다른 화면으로 넘어가며 마우스 잡기가 풀리면 손을 뗀 것을 못 받을 수 있어 그때도 끝낸다
-  handle.addEventListener('lostpointercapture', end);
+  // 마우스 잡기가 풀렸는데 버튼도 떼어져 있으면(손을 뗀 것을 못 받은 경우) 끝낸다. 누르고 있는 중이면 계속 끈다
+  handle.addEventListener('lostpointercapture', (e) => {
+    if (e.buttons === 0) end(e);
+  });
 }
 
 pointerDrag($('dragHandle'), 'move');
@@ -153,7 +151,6 @@ api.onListening(renderListening);
 void api.getListening().then(renderListening);
 
 $('hide').addEventListener('click', () => {
-  setInteractive(false);
   void api.setOverlayVisible(false);
 });
 
@@ -164,4 +161,7 @@ api.onOverlayMoveMode((on) => {
   $('moveHint').classList.toggle('hidden', !on);
   if (on) stack.classList.remove('faded');
 });
-void api.getSettings().then(applySettings);
+void api.getSettings().then((s) => {
+  applySettings(s);
+  reportTools();
+});

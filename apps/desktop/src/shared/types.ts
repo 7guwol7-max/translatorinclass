@@ -307,6 +307,11 @@ export interface RendererApi {
   aihubSearch(keyword: string): Promise<AihubSearchResult>;
   aihubDetail(id: string): Promise<{ ok: boolean; message: string; detail?: AihubDetail }>;
 
+  /** 프로그램 버전 (예: 0.6.2) */
+  getVersion(): Promise<string>;
+  /** 자막 창 문제 보고용 정보 (화면 배치·자막 창 자리·최근 기록) */
+  getOverlayReport(): Promise<string>;
+
   // 자막 창 위치·모양
   getDisplays(): Promise<DisplayInfo[]>;
   onDisplays(cb: (displays: DisplayInfo[]) => void): () => void;
@@ -316,7 +321,10 @@ export interface RendererApi {
   toggleMoveMode(): Promise<void>;
 
   // 자막 창(오버레이) 안에서만 쓰는 기능
-  setOverlayInteractive(interactive: boolean): void;
+  /** 도구 막대·모서리의 자리 (창 안 좌표) — main 이 커서가 그 위에 있을 때만 클릭을 받게 한다 */
+  setOverlayTools(rects: Bounds[]): void;
+  /** 커서가 자막 창 위에 올라왔는지 (main 이 커서 자리로 판단) */
+  onOverlayHover(cb: (on: boolean) => void): () => void;
   overlayPointer(kind: 'move' | 'resize', phase: 'start' | 'end'): void;
   nudgeOverlayFont(delta: number): void;
 }

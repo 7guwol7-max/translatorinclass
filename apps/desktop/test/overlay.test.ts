@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { boundsFor, placeWindow, sameBounds, type DpiConversion } from '../src/main/overlay-layout';
+import { boundsFor, placeWindow, pointerZone, sameBounds, type DpiConversion } from '../src/main/overlay-layout';
 import type { Bounds } from '../src/shared/types';
 
 // Windows 에서 화면마다 배율이 다를 때 Electron(Chromium) 창이 움직이는 방식을 흉내 낸다.
@@ -128,8 +128,47 @@ describe('배율이 다른 두 번째 화면으로 자막 창 옮기기', () => 
     expect(win.getBounds()).toEqual(onB);
   });
 
+  it('배율 변환이 오류를 내도 다시 놓아 맞춘다', () => {
+    const win = new SimWindow(onA, A);
+    const broken: DpiConversion = {
+      toPhysical: () => {
+        throw new Error('not supported');
+      },
+      toWindowDip: (b) => b,
+    };
+    expect(placeWindow(win, onB, broken)).toBe(true);
+    expect(win.getBounds()).toEqual(onB);
+  });
+
   it('sameBounds 는 1px 차이는 같은 것으로 본다', () => {
     expect(sameBounds({ x: 0, y: 0, width: 100, height: 50 }, { x: 1, y: -1, width: 101, height: 49 })).toBe(true);
     expect(sameBounds({ x: 0, y: 0, width: 100, height: 50 }, { x: 3, y: 0, width: 100, height: 50 })).toBe(false);
+  });
+});
+
+describe('도구 막대 위에서만 클릭 받기 (커서 자리로 판단)', () => {
+  const win = { x: 1376, y: 784, width: 1728, height: 280 }; // 두 번째 화면의 자막 창
+  const tools = [
+    { x: 1440, y: 8, width: 280, height: 40 }, // 도구 막대 (창 안 좌표)
+    { x: 1700, y: 252, width: 22, height: 22 }, // 오른쪽 아래 모서리
+  ];
+
+  it('도구 막대 위면 클릭을 받는다', () => {
+    expect(pointerZone({ x: 1376 + 1500, y: 784 + 20 }, win, tools)).toEqual({ inside: true, overTool: true });
+    expect(pointerZone({ x: 1376 + 1710, y: 784 + 260 }, win, tools)).toEqual({ inside: true, overTool: true });
+  });
+
+  it('자막 글자 위는 창 안이지만 클릭은 통과', () => {
+    expect(pointerZone({ x: 1376 + 400, y: 784 + 150 }, win, tools)).toEqual({ inside: true, overTool: false });
+  });
+
+  it('도구 가장자리는 6px 넉넉히 본다', () => {
+    expect(pointerZone({ x: 1376 + 1436, y: 784 + 4 }, win, tools).overTool).toBe(true);
+    expect(pointerZone({ x: 1376 + 1430, y: 784 + 20 }, win, tools).overTool).toBe(false);
+  });
+
+  it('창 밖이면 어느 쪽도 아니다 (도구 막대 바로 바깥 포함)', () => {
+    expect(pointerZone({ x: 1376 + 1500, y: 780 }, win, tools)).toEqual({ inside: false, overTool: false });
+    expect(pointerZone({ x: 100, y: 100 }, win, tools)).toEqual({ inside: false, overTool: false });
   });
 });

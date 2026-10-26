@@ -147,13 +147,16 @@ function installApi(state) {
     onOverlayMoveMode: on('move'),
     aihubSearch: async () => ({ ok: true, message: '', total: 0, items: [] }),
     aihubDetail: async () => ({ ok: false, message: '' }),
+    getVersion: async () => '0.6.2',
+    getOverlayReport: async () => '',
     getDisplays: async () => state.displays,
     onDisplays: on('displays'),
     placeOverlay: async () => undefined,
     setOverlayVisible: async () => undefined,
     onOverlayVisible: on('overlay-visible'),
     toggleMoveMode: async () => undefined,
-    setOverlayInteractive: () => undefined,
+    setOverlayTools: () => undefined,
+    onOverlayHover: on('overlay-hover'),
     overlayPointer: () => undefined,
     nudgeOverlayFont: () => undefined,
   };
@@ -340,8 +343,8 @@ async function main() {
     }, CAPTIONS);
     await page.waitForTimeout(500);
     await shot(page, 'overlay-on-slide');
-    await page.mouse.move(1300, 700);
-    await page.mouse.move(1320, 720);
+    // 앱에서는 main 이 커서 자리를 보고 'overlay:hover' 를 보낸다
+    await frame.evaluate(() => window.__emit('overlay-hover', true));
     await page.waitForTimeout(300);
     await shot(page, 'overlay-toolbar', {
       frame,
@@ -362,7 +365,7 @@ async function main() {
   };
 
   await pageShot('overlay', 'page-overlay', clone(BASE), {
-    marks: [{ sel: '#displayList', n: 1 }, { sel: '#anchorGrid', n: 2, pad: 8 }, { sel: '#fontSize', n: 3 }, { sel: '#resetOverlay', n: 4 }],
+    marks: [{ sel: '#displayList', n: 1 }, { sel: '#anchorGrid', n: 2, pad: 8 }, { sel: '#fontSize', n: 3 }, { sel: '#resetOverlay', n: 4 }, { sel: '#overlayReport', n: 5 }],
   });
   await pageShot('langs', 'page-langs', clone(BASE), {
     marks: [{ sel: '#studentLangs', n: 1, pad: 8 }, { sel: '#overlayLangs', n: 2, pad: 8 }],

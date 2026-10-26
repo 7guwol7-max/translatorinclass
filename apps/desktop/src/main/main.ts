@@ -14,6 +14,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 import path from 'node:path';
+import os from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { promises as fs, readFileSync } from 'node:fs';
 import type { Caption, Channel, DisplayInfo, KeyProvider, OverlayAnchor, OverlayPlacement, Settings, StatusMessage, StudentLinkStatus, TestResult } from '../shared/types';
@@ -32,7 +33,7 @@ import { ClaudeTranslator } from './providers/claude';
 import { AihubClient } from './providers/aihub';
 import { ProviderError } from './providers/errors';
 import { StudentLinkServer } from './lan/server';
-import { boundsFor, placeWindow, sameBounds, type DpiConversion } from './overlay-layout';
+import { boundsFor, placeWindow, pointerZone, sameBounds, type DpiConversion } from './overlay-layout';
 
 const DIST = __dirname;
 const RENDERER_DIR = path.join(DIST, 'renderer');
@@ -184,6 +185,54 @@ function defaultOverlayBounds(): Electron.Rectangle {
   return boundsFor(displayFor(s.overlayDisplayId).workArea, s.overlayAnchor ?? 'bottom-center', s.overlayWidthPct, s.overlayHeight);
 }
 
+// ── 자막 창 기록 (문제 보고용) ─────────────────────────────────
+// 자막 창을 옮길 때 무엇을 했고 실제로 어디로 갔는지 최근 300줄을 남긴다. 화면에서 '문제 보고용 정보 복사'로 보낸다.
+
+const overlayLog: string[] = [];
+
+function olog(message: string): void {
+  overlayLog.push(`${new Date().toTimeString().slice(0, 8)} ${message}`);
+  if (overlayLog.length > 300) overlayLog.shift();
+}
+
+const rect = (b: Electron.Rectangle | null | undefined) => (b ? `${b.x},${b.y} ${b.width}×${b.height}` : '-');
+
+function displaysText(): string[] {
+  const primary = screen.getPrimaryDisplay();
+  return screen.getAllDisplays().map((d, i) =>
+    `화면 ${i + 1} id=${d.id}${d.id === primary.id ? ' 주' : ''} 영역 ${rect(d.bounds)} 작업 ${rect(d.workArea)} 배율 ${Math.round(d.scaleFactor * 100)}% 회전 ${d.rotation}${d.internal ? ' 내장' : ''}`);
+}
+
+function overlayReport(): string {
+  const s = settings.get();
+  const lines = [
+    `교실 통역 ${app.getVersion()} · ${process.platform === 'win32' ? 'Windows' : process.platform} ${os.release()} · Electron ${process.versions.electron}`,
+    ...displaysText(),
+    overlay
+      ? `자막 창 ${rect(overlay.getBounds())} 보임=${overlay.isVisible()} 화면=${screen.getDisplayMatching(overlay.getBounds()).id} 크기조절=${overlay.isResizable()} 이동=${overlay.isMovable()} 옮기기모드=${moveMode} 끄는중=${Boolean(pointerTimer)}`
+      : '자막 창 없음',
+    `설정 화면=${s.overlayDisplayId ?? '자동'} 자리=${s.overlayAnchor ?? '직접'} 너비=${s.overlayWidthPct}% 높이=${s.overlayHeight} 저장=${rect(s.overlayBounds)}`,
+    '--- 최근 기록 ---',
+    ...overlayLog.slice(-120),
+  ];
+  return lines.join('\n');
+}
+
+/** 점검: 자막 창을 화면마다 가운데로 잠깐 옮겨 실제로 어디로 가는지 기록하고 원래 자리로 돌린다 */
+async function overlaySelfTest(): Promise<void> {
+  if (!overlay || moveMode || pointerTimer) return;
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const original = overlay.getBounds();
+  olog(`점검 시작 (지금 ${rect(original)})`);
+  for (const [i, d] of screen.getAllDisplays().entries()) {
+    setOverlayBounds(boundsFor(d.workArea, 'middle-center', 50, 200), `점검 화면 ${i + 1}`);
+    await wait(700);
+    olog(`점검 화면 ${i + 1}: 0.7초 뒤 ${rect(overlay?.getBounds())}`);
+  }
+  setOverlayBounds(original, '점검 끝(원래 자리)');
+  await wait(500);
+}
+
 /** 시작할 때 자리: 위치 버튼으로 둔 창은 그 화면·자리를 다시 계산하고, 직접 옮긴 창은 저장한 자리 (화면 밖이면 기본 자리) */
 function initialOverlayBounds(): Electron.Rectangle {
   const s = settings.get();
@@ -199,21 +248,55 @@ const dpi: DpiConversion | null = process.platform === 'win32'
   : null;
 let placedTarget: Electron.Rectangle | null = null;
 let verifyTimer: NodeJS.Timeout | null = null;
+let watchTimer: NodeJS.Timeout | null = null;
+
+/** setBounds 로 안 맞으면: 크기 조절을 잠깐 허용하고 위치·크기를 따로 맞춘다 (크기를 못 바꾸게 막힌 창 대비) */
+function forceBounds(win: BrowserWindow, target: Electron.Rectangle): void {
+  const resizable = win.isResizable();
+  if (!resizable) win.setResizable(true);
+  win.setPosition(target.x, target.y);
+  win.setSize(target.width, target.height);
+  if (!resizable) win.setResizable(false);
+}
 
 /**
  * 자막 창을 옮긴다. 배율이 다른 화면(예: 노트북 150% → 프로젝터 100%)으로도 정확히 가도록 placeWindow 로 맞추고,
- * Windows 가 배율 변경을 조금 늦게 처리하는 경우가 있어 잠시 뒤 한 번 더 확인한다.
+ * 그래도 안 맞으면 위치·크기를 따로 맞춘다. Windows 가 배율 변경을 늦게 처리하는 경우가 있어 잠시 뒤 다시 확인하고,
+ * 2초 뒤에도 그 자리에 있는지 기록한다 (무언가 되돌리는지 알 수 있게).
  */
-function setOverlayBounds(target: Electron.Rectangle): void {
+function setOverlayBounds(target: Electron.Rectangle, why: string): void {
   if (!overlay) return;
   const win = overlay;
-  placeWindow(win, target, dpi);
+  const before = win.getBounds();
+  let ok = false;
+  try {
+    ok = placeWindow(win, target, dpi);
+    if (!ok) {
+      olog(`${why}: 맞지 않음 ${rect(win.getBounds())} → 위치·크기 따로`);
+      forceBounds(win, target);
+      ok = sameBounds(win.getBounds(), target);
+    }
+  } catch (error) {
+    olog(`${why}: 오류 ${String(error)}`);
+  }
+  olog(`${why}: ${rect(before)} → 목표 ${rect(target)} → ${rect(win.getBounds())}${ok ? '' : ' (어긋남)'}`);
   placedTarget = target;
   if (verifyTimer) clearTimeout(verifyTimer);
   verifyTimer = setTimeout(() => {
     verifyTimer = null;
-    if (overlay === win && !win.isDestroyed() && placedTarget === target && !pointerTimer && !moveMode) placeWindow(win, target, dpi);
+    if (overlay !== win || win.isDestroyed() || placedTarget !== target || pointerTimer || moveMode) return;
+    if (!sameBounds(win.getBounds(), target)) {
+      olog(`${why}: 0.4초 뒤 ${rect(win.getBounds())} — 다시 맞춤`);
+      if (!placeWindow(win, target, dpi)) forceBounds(win, target);
+    }
   }, 400);
+  if (watchTimer) clearTimeout(watchTimer);
+  watchTimer = setTimeout(() => {
+    watchTimer = null;
+    if (overlay === win && !win.isDestroyed() && placedTarget === target && !sameBounds(win.getBounds(), target)) {
+      olog(`${why}: 2초 뒤 자리가 바뀜 ${rect(win.getBounds())}`);
+    }
+  }, 2000);
 }
 
 function visibleBounds(b: Settings['overlayBounds']): Electron.Rectangle | null {
@@ -257,7 +340,7 @@ async function placeOverlay(placement: OverlayPlacement): Promise<void> {
     bounds = { x, y, width, height };
   }
   if (!overlay.isVisible()) setOverlayVisible(true);
-  setOverlayBounds(bounds);
+  setOverlayBounds(bounds, `버튼(화면 ${placement.displayId ?? '지금'}, ${placement.anchor ?? '크기'})`);
   await saveOverlayBounds(placement.anchor);
 }
 
@@ -266,24 +349,37 @@ let pointerTimer: NodeJS.Timeout | null = null;
 let pointerStop: NodeJS.Timeout | null = null;
 
 let dragTarget: Electron.Rectangle | null = null;
+let dragKind: 'move' | 'resize' = 'move';
+/** 끄는 동안 본 횟수·옮긴 횟수·마지막 커서 (문제 보고용) */
+let dragStats = { ticks: 0, moves: 0, cursor: { x: 0, y: 0 } };
+let dragRestoreResizable = false;
 
 function startPointerTrack(kind: 'move' | 'resize'): void {
   if (!overlay) return;
   stopPointerTrack(false);
   const start = screen.getCursorScreenPoint();
   const from = overlay.getBounds();
+  dragKind = kind;
+  olog(`끌기 시작(${kind === 'move' ? '이동' : '크기'}) 창 ${rect(from)} 커서 ${start.x},${start.y}`);
+  // 크기를 못 바꾸게 막힌 창이면 끄는 동안만 허용한다
+  dragRestoreResizable = kind === 'resize' && !overlay.isResizable();
+  if (dragRestoreResizable) overlay.setResizable(true);
   // 잡은 곳(창 안의 점)을 기억해 커서 자리에서 바로 계산한다. 시작점과의 차이를 쌓지 않으므로
   // 배율이 다른 화면으로 넘어가도 창이 커서에서 멀어지지 않고, 크기는 처음 크기(DIP)로 계속 맞춘다.
   const grab = { x: start.x - from.x, y: start.y - from.y };
   dragTarget = from;
+  dragStats = { ticks: 0, moves: 0, cursor: start };
   pointerTimer = setInterval(() => {
     if (!overlay) return;
     const p = screen.getCursorScreenPoint();
+    dragStats.ticks++;
+    dragStats.cursor = p;
     const next = kind === 'move'
       ? { x: p.x - grab.x, y: p.y - grab.y, width: from.width, height: from.height }
       : { ...from, width: Math.max(360, from.width + p.x - start.x), height: Math.max(120, from.height + p.y - start.y) };
     if (dragTarget && sameBounds(next, dragTarget, 0)) return; // 커서가 멈춰 있으면 그대로
     dragTarget = next;
+    dragStats.moves++;
     overlay.setBounds(next);
   }, 16);
   pointerStop = setTimeout(() => stopPointerTrack(true), 60_000); // 혹시 놓친 경우 대비
@@ -297,8 +393,11 @@ function stopPointerTrack(save: boolean): void {
   pointerTimer = null;
   const target = dragTarget;
   dragTarget = null;
+  if (dragRestoreResizable && overlay) overlay.setResizable(false);
+  dragRestoreResizable = false;
+  olog(`끌기 끝 → ${rect(target)} 실제 ${rect(overlay?.getBounds())} (커서 ${dragStats.cursor.x},${dragStats.cursor.y}, 확인 ${dragStats.ticks}번, 옮김 ${dragStats.moves}번)`);
   if (!save) return;
-  if (target) setOverlayBounds(target); // 다른 배율의 화면에 놓았으면 자리·크기를 마저 맞춘다
+  if (target) setOverlayBounds(target, dragKind === 'move' ? '끌어서 이동' : '끌어서 크기'); // 다른 배율의 화면에 놓았으면 마저 맞춘다
   void saveOverlayBounds(null);
 }
 
@@ -338,14 +437,16 @@ function createOverlay(): void {
   // 전체화면 PPT·영상 위에도 보이도록 가장 높은 단계로
   overlay.setAlwaysOnTop(true, 'screen-saver');
   overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  overlay.setIgnoreMouseEvents(true, { forward: true }); // 클릭은 아래 창으로 통과
+  overlay.setIgnoreMouseEvents(true); // 클릭은 아래 창으로 통과 (도구 막대 위에서만 받음: watchOverlayPointer)
+  overlayInteractive = false;
   void overlay.loadURL(`${APP_ORIGIN}/overlay/index.html`);
   // 창을 만들 때의 자리는 주 모니터 배율로 계산돼, 배율이 다른 두 번째 화면이면 어긋난다. 보이기 전후로 다시 맞춘다.
-  setOverlayBounds(bounds);
+  olog(`시작: ${displaysText().join(' / ')}`);
+  setOverlayBounds(bounds, '시작(만들 때)');
   const reveal = () => {
     if (!overlay || overlay.isVisible()) return;
     overlay.showInactive();
-    setOverlayBounds(bounds);
+    setOverlayBounds(bounds, '시작(보인 뒤)');
   };
   overlay.once('ready-to-show', reveal);
   overlay.webContents.once('did-finish-load', reveal); // 투명 창에서 ready-to-show 가 늦거나 안 오는 경우 대비
@@ -356,24 +457,55 @@ function createOverlay(): void {
 
 /** 일부 전체화면 프로그램이 위로 올라오는 경우를 대비해 주기적으로 다시 맨 위로 */
 function keepOverlayOnTop(): void {
+  // moveTop() 은 쓰지 않는다: Windows 에서 창 자리를 DIP 그대로 실제 픽셀로 다시 놓아,
+  // 배율이 100% 가 아닌 화면에서는 자막 창을 3초마다 엉뚱한 곳으로 옮긴다.
   setInterval(() => {
-    if (overlay && overlay.isVisible() && !moveMode && !pointerTimer) {
-      overlay.setAlwaysOnTop(true, 'screen-saver');
-      overlay.moveTop();
-    }
+    if (overlay && overlay.isVisible() && !moveMode && !pointerTimer) overlay.setAlwaysOnTop(true, 'screen-saver');
   }, 3000);
+}
+
+// ── 도구 막대 위에서만 클릭 받기 ───────────────────────────────
+// 커서가 도구 막대·모서리 위에 있는지 30ms 마다 커서 자리로 판단해 클릭 통과를 켜고 끈다.
+// (화면 안의 마우스 이벤트로 판단하면 클릭 통과를 바꿀 때마다 '나감' 이벤트가 와서 상태가 계속 뒤집힌다)
+
+let toolRects: Electron.Rectangle[] = [];
+let overlayHover = false;
+let overlayInteractive = false;
+
+function setOverlayInteractive(on: boolean, why: string): void {
+  if (!overlay || on === overlayInteractive) return;
+  overlayInteractive = on;
+  overlay.setIgnoreMouseEvents(!on);
+  olog(`도구 막대 ${on ? '누를 수 있음' : '클릭 통과'} (${why})`);
+}
+
+function watchOverlayPointer(): void {
+  setInterval(() => {
+    if (!overlay || overlay.isDestroyed() || moveMode) return;
+    const visible = overlay.isVisible();
+    const zone = visible ? pointerZone(screen.getCursorScreenPoint(), overlay.getBounds(), toolRects) : { inside: false, overTool: false };
+    if (zone.inside !== overlayHover) {
+      overlayHover = zone.inside;
+      overlay.webContents.send('overlay:hover', zone.inside);
+    }
+    // 끄는 중에는 손을 뗄 때까지 클릭을 받는다
+    if (pointerTimer) setOverlayInteractive(true, '끄는 중');
+    else setOverlayInteractive(zone.overTool, zone.overTool ? '커서가 도구 위' : '커서가 벗어남');
+  }, 30);
 }
 
 function setMoveMode(on: boolean): void {
   if (!overlay) return;
   if (on && !overlay.isVisible()) overlay.showInactive();
   moveMode = on;
-  overlay.setIgnoreMouseEvents(!on, { forward: true });
+  overlay.setIgnoreMouseEvents(!on);
+  overlayInteractive = on;
   overlay.setFocusable(on);
   overlay.setResizable(on);
   if (on) overlay.focus();
   overlay.webContents.send('overlay:move-mode', on);
   control?.webContents.send('overlay:move-mode', on);
+  olog(`옮기기 모드 ${on ? '켬' : '끔'} 창 ${rect(overlay.getBounds())}`);
   if (!on) void saveOverlayBounds(null);
 }
 
@@ -620,6 +752,11 @@ function registerIpc(): void {
     }
   });
   handle('overlay:displays', () => displayList());
+  handle('overlay:report', async () => {
+    await overlaySelfTest();
+    return overlayReport();
+  });
+  handle('app:version', () => app.getVersion());
   handle('overlay:place', (placement: OverlayPlacement) => {
     if (!placement || typeof placement !== 'object') throw new Error('잘못된 요청입니다');
     const anchor = placement.anchor;
@@ -634,12 +771,15 @@ function registerIpc(): void {
   handle('overlay:toggle-move', () => setMoveMode(!moveMode));
 
   // 자막 창 안의 도구 막대
-  ipcMain.on('overlay:interactive', (event, interactive: unknown) => {
-    if (!fromApp(event) || !overlay || moveMode) return;
-    overlay.setIgnoreMouseEvents(!interactive, { forward: true });
+  ipcMain.on('overlay:tools', (event, rects: unknown) => {
+    if (!fromApp(event) || !Array.isArray(rects)) return;
+    const ok = (r: unknown): r is Electron.Rectangle =>
+      !!r && typeof r === 'object' && ['x', 'y', 'width', 'height'].every((k) => Number.isFinite((r as Record<string, number>)[k]));
+    toolRects = rects.filter(ok).slice(0, 10).map((r) => ({ x: r.x, y: r.y, width: r.width, height: r.height }));
   });
   ipcMain.on('overlay:pointer', (event, kind: unknown, phase: unknown) => {
     if (!fromApp(event) || (kind !== 'move' && kind !== 'resize')) return;
+    olog(`도구 막대 ${kind === 'move' ? '이동' : '모서리'} ${phase === 'start' ? '누름' : '뗌'}`);
     if (phase === 'start') startPointerTrack(kind);
     else stopPointerTrack(true);
   });
@@ -771,26 +911,39 @@ app.whenReady().then(async () => {
   createControl();
   createOverlay();
   keepOverlayOnTop();
+  watchOverlayPointer();
   await applyStudentLink();
 
-  // 화면을 꽂거나 빼거나, 해상도·배율이 바뀌면: 위치 버튼으로 둔 자막 창은 그 화면의 그 자리로 다시 놓고
-  // (화면을 따로 고르지 않았으면 새로 꽂은 프로젝터로), 직접 옮긴 창은 화면 밖으로 나갔을 때만 기본 자리로.
+  // 화면을 꽂거나 빼면: 화면을 따로 고르지 않고 위치 버튼으로 둔 자막 창은 새 화면 배치의 그 자리로(프로젝터가 있으면 프로젝터),
+  // 그 밖에는 화면 밖으로 나갔을 때만 기본 자리로. 해상도·배율이 바뀐 것만으로는 옮기지 않는다
+  // (어떤 PC 는 이 알림이 자주 와서, 선생님이 옮긴 창을 되돌려 버리기 때문).
   let relayoutTimer: NodeJS.Timeout | null = null;
-  const relayoutOverlay = () => {
+  let relayoutAdded = false; // 0.5초 안에 화면을 꽂거나 뺀 알림이 하나라도 있었는지
+  let layoutKey = displaysText().join('|');
+  const relayoutOverlay = (added: boolean) => {
     if (!overlay || moveMode || pointerTimer) return;
-    if (settings.get().overlayAnchor || !visibleBounds(overlay.getBounds())) setOverlayBounds(defaultOverlayBounds());
+    const s = settings.get();
+    if (added && s.overlayAnchor && s.overlayDisplayId === null) setOverlayBounds(defaultOverlayBounds(), '화면 바뀜(자동 자리)');
+    else if (!visibleBounds(overlay.getBounds())) setOverlayBounds(defaultOverlayBounds(), '화면 밖으로 나감');
   };
-  const onDisplaysChanged = () => {
+  const onDisplaysChanged = (kind: string) => () => {
+    const key = displaysText().join('|');
+    if (key === layoutKey) return;
+    layoutKey = key;
+    olog(`화면 ${kind}: ${displaysText().join(' / ')}`);
     control?.webContents.send('displays', displayList());
+    relayoutAdded ||= kind !== '바뀜';
     if (relayoutTimer) clearTimeout(relayoutTimer);
     relayoutTimer = setTimeout(() => {
       relayoutTimer = null;
-      relayoutOverlay();
+      const added = relayoutAdded;
+      relayoutAdded = false;
+      relayoutOverlay(added);
     }, 500); // 화면을 꽂으면 이벤트가 몇 번 이어서 온다
   };
-  screen.on('display-added', onDisplaysChanged);
-  screen.on('display-removed', onDisplaysChanged);
-  screen.on('display-metrics-changed', onDisplaysChanged);
+  screen.on('display-added', onDisplaysChanged('추가'));
+  screen.on('display-removed', onDisplaysChanged('빠짐'));
+  screen.on('display-metrics-changed', onDisplaysChanged('바뀜'));
 
   globalShortcut.register('Control+Alt+H', toggleOverlay);
   globalShortcut.register('Control+Alt+M', () => setMoveMode(!moveMode));

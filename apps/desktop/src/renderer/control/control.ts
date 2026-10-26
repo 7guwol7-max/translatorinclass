@@ -1125,6 +1125,16 @@ function bind(): void {
   $('toggleOverlay').addEventListener('click', () => void api.setOverlayVisible(!overlayVisible));
   $('resetOverlay').addEventListener('click', () => void place({ displayId: null, anchor: 'bottom-center', widthPct: 90, height: 280 }));
   $('moveOverlay').addEventListener('click', () => void api.toggleMoveMode());
+  $('overlayReport').addEventListener('click', async () => {
+    $('overlayReportNote').textContent = '자막 창을 화면마다 옮겨 보는 중…';
+    const report = await api.getOverlayReport();
+    try {
+      await navigator.clipboard.writeText(report);
+      $('overlayReportNote').textContent = '복사했어요. 메신저나 메일에 붙여넣어(Ctrl+V) 보내 주세요.';
+    } catch {
+      $('overlayReportNote').textContent = '복사하지 못했어요. 잠시 뒤 다시 눌러 주세요.';
+    }
+  });
 
   $('linkEnabled').addEventListener('change', (e) => void save({ studentLinkEnabled: (e.target as HTMLInputElement).checked }));
   $('clearLog').addEventListener('click', showEmptyLog);
@@ -1166,6 +1176,7 @@ async function init(): Promise<void> {
   renderQuota(await api.getQuota());
   renderLink(await api.getStudentLink());
   renderLive(await api.getLiveStatus());
+  $('appVersion').textContent = `버전 ${await api.getVersion()}`;
   requestAnimationFrame(meterUpdate);
   if (!settings.onboarded) openWizard(0);
 }
