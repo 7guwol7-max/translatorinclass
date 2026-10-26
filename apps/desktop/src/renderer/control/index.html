@@ -49,6 +49,7 @@
         <div><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>H</kbd> 자막 숨기기</div>
         <button id="reopenWizard" type="button" class="btn link sm">처음 설정 다시 하기</button>
         <button type="button" class="btn link sm" data-open="https://github.com/7guwol7-max/translatorinclass/releases/latest/download/ClassroomInterpreter-Manual-ko.pdf">사용설명서 (PDF)</button>
+        <div id="appVersion" class="version"></div>
       </div>
     </nav>
 
@@ -152,6 +153,10 @@
             <div class="btn-row">
               <button id="moveOverlay" type="button" class="btn">자막 전체를 끌어서 옮기기 (Ctrl+Alt+M)</button>
               <button id="resetOverlay" type="button" class="btn ghost">처음 위치로</button>
+            </div>
+            <div class="report-row">
+              <button id="overlayReport" type="button" class="btn ghost sm">문제 보고용 정보 복사</button>
+              <span id="overlayReportNote" class="hint">자막 창이 안 움직이면 눌러 주세요. 자막 창이 화면마다 잠깐 옮겨졌다 돌아오고, 그 결과가 복사됩니다. 복사된 내용을 개발자에게 보내 주세요.</span>
             </div>
           </div>
         </div>

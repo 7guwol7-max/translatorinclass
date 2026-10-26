@@ -43,7 +43,25 @@ function roundBounds(b: Bounds): Bounds {
  */
 export function placeWindow(win: MovableWindow, target: Bounds, dpi: DpiConversion | null): boolean {
   if (sameBounds(win.getBounds(), target)) return true;
-  if (dpi) win.setBounds(roundBounds(dpi.toWindowDip(dpi.toPhysical(target))));
+  if (dpi) {
+    try {
+      win.setBounds(roundBounds(dpi.toWindowDip(dpi.toPhysical(target))));
+    } catch {
+      // 배율 변환을 못 하면 아래에서 그냥 다시 놓는다
+    }
+  }
   for (let i = 0; i < 3 && !sameBounds(win.getBounds(), target); i++) win.setBounds(target);
   return sameBounds(win.getBounds(), target);
+}
+
+/**
+ * 커서가 자막 창 안인지, 도구 막대(·모서리) 위인지. cursor·window 는 화면 DIP, tools 는 창 안 좌표.
+ * 도구 위로 판단할 때는 가장자리 margin(px) 만큼 넉넉히 본다 (빨리 움직여 누를 때 놓치지 않게).
+ */
+export function pointerZone(cursor: { x: number; y: number }, window: Bounds, tools: Bounds[], margin = 6): { inside: boolean; overTool: boolean } {
+  const x = cursor.x - window.x;
+  const y = cursor.y - window.y;
+  const inside = x >= 0 && y >= 0 && x < window.width && y < window.height;
+  const overTool = inside && tools.some((r) => x >= r.x - margin && x < r.x + r.width + margin && y >= r.y - margin && y < r.y + r.height + margin);
+  return { inside, overTool };
 }
