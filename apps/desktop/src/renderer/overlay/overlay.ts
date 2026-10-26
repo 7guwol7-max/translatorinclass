@@ -134,6 +134,8 @@ function pointerDrag(handle: HTMLElement, kind: 'move' | 'resize'): void {
   };
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
+  // 배율이 다른 화면으로 넘어가며 마우스 잡기가 풀리면 손을 뗀 것을 못 받을 수 있어 그때도 끝낸다
+  handle.addEventListener('lostpointercapture', end);
 }
 
 pointerDrag($('dragHandle'), 'move');
