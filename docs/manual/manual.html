@@ -126,7 +126,7 @@
   <img src="img/overlay-on-slide.png" alt="수업 슬라이드 위에 뜬 통역 자막">
   <p class="cap">선생님이 한국어로 말하면 수업 화면 위에 학생 언어 자막이 뜨고, 학생이 모국어로 말하면 한국어로 보여 줍니다.</p>
   <div class="chips"><span>무료 (Gemini 무료 키)</span><span>설치 약 5분</span><span>처음 설정 약 3분</span><span>음성·자막을 저장하지 않음</span></div>
-  <div class="meta"><div><b>버전 0.6.0</b><br>2026년 10월</div><div style="text-align:right">최신판 내려받기<br><b>github.com/7guwol7-max/translatorinclass</b></div></div>
+  <div class="meta"><div><b>버전 0.6.1</b><br>2026년 10월</div><div style="text-align:right">최신판 내려받기<br><b>github.com/7guwol7-max/translatorinclass</b></div></div>
 </section>
 
 <!-- ───────────────────────── 목차 ───────────────────────── -->
@@ -378,7 +378,7 @@
   <div class="box tip">쉬는 시간이나 개인적인 이야기를 할 때는 <b>멈춤</b>(자막 창 도구 막대) 또는 <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>P</kbd> 로 잠시 멈추세요. 멈춘 동안에는 소리를 보내지 않습니다.</div>
 
   <h2 class="chapter">5-3. 자막 창</h2>
-  <p>수업을 시작하면 화면 <b>아래 가운데</b>에 반투명 자막 창이 뜹니다. 프로젝터가 연결돼 있으면 프로젝터 화면에 뜹니다.</p>
+  <p>수업을 시작하면 화면 <b>아래 가운데</b>에 반투명 자막 창이 뜹니다. 프로젝터가 연결돼 있으면 프로젝터 화면에 뜹니다. 프로그램을 켠 뒤에 프로젝터를 꽂아도 그쪽으로 옮겨 갑니다 (화면을 따로 고르지 않았을 때).</p>
   <figure><img src="img/overlay-on-slide.png" alt="슬라이드 위 자막 창"><figcaption>PPT 쇼·동영상을 전체 화면으로 켜도 자막이 위에 보입니다. 최근 자막 2개가 보이고, 20초 동안 말이 없으면 잠시 사라집니다.</figcaption></figure>
   <ul>
     <li>선생님 말: 위 줄 한국어, 아래 줄들이 학생 언어 (자막 창에는 최대 3개 언어)</li>
@@ -415,7 +415,7 @@
   <p class="lead">왼쪽 메뉴 <b>자막 창</b>에서 자막이 뜰 화면과 자리를 고릅니다. 누르는 즉시 옮겨집니다.</p>
   <figure><img src="img/page-overlay.png" alt="자막 창 설정 화면"></figure>
   <ul class="callouts">
-    <li><span class="n">1</span><span><b>어느 화면에?</b>: 프로젝터·TV 가 연결돼 있으면 화면을 고릅니다. (Windows 디스플레이 설정이 <b>확장</b>일 때 화면이 2개로 보입니다. <b>복제</b>면 하나로 보입니다)</span></li>
+    <li><span class="n">1</span><span><b>어느 화면에?</b>: 프로젝터·TV 가 연결돼 있으면 화면을 고릅니다. (Windows 디스플레이 설정이 <b>확장</b>일 때 화면이 2개로 보입니다. <b>복제</b>면 하나로 보입니다) 화면 이름 끝의 <b>150%</b> 같은 숫자는 Windows 배율입니다. 노트북과 프로젝터의 배율이 달라도 자막 창이 정확한 자리로 갑니다.</span></li>
     <li><span class="n">2</span><span><b>어디에?</b>: 모니터 그림의 9칸 중 하나를 누르면 자막 창이 그 자리로 갑니다. 칠판 판서를 가리면 <b>위 가운데</b>도 좋습니다.</span></li>
     <li><span class="n">3</span><span><b>크기</b>: 너비·높이·글자 크기를 밀대로 바꿉니다. 교실 뒤에서도 보이게 글자를 키우세요 (보통 30~40).</span></li>
     <li><span class="n">4</span><span><b>처음 위치로</b>: 자막 창이 안 보이는 곳으로 갔을 때 누릅니다.</span></li>
@@ -576,6 +576,7 @@
     <tr><td><b>자막</b>: 무료 사용량이 너무 빨리 줄어듦</td><td>자막 속도를 <b>보통·절약</b>으로, 또는 <b>느리면 다른 모델로 한 번 더 보내기</b>를 끕니다. 학생 언어는 필요한 것만 고르세요.</td></tr>
     <tr><td><b>자막 창</b>: PPT·영상 위에 안 보임</td><td><kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>H</kbd> 를 두 번 눌러 다시 띄웁니다.</td></tr>
     <tr><td><b>자막 창</b>: 안 보이는 곳으로 감, 프로젝터를 뺐음</td><td><b>자막 창 → 처음 위치로</b>.</td></tr>
+    <tr><td><b>자막 창</b>: 두 번째 모니터(프로젝터·TV)에서 엉뚱한 곳에 가거나 크기가 맞지 않음</td><td>v0.6.1 에서 고쳤습니다 (노트북과 프로젝터의 Windows 배율이 다를 때 생기던 문제). 최신판으로 바꾼 뒤 <b>자막 창 → 어느 화면에?</b> 에서 그 화면을 한 번 다시 누르세요.</td></tr>
     <tr><td><b>Live</b>: "Live 모드가 안 돼서 … 지금까지 쓰던 방식으로"</td><td>알림 끝의 이유를 보세요. "쓸 수 없는 Live 모델" → <b>API 키 → 연결 테스트</b> 후 다른 모델 고르기 · "HTTP …" → 학교 네트워크가 막는 경우라 Live 모드 끄기 · "한도" → 그날은 Live 모드 끄기.</td></tr>
     <tr><td><b>Live</b>: 오히려 늦음</td><td><b>속도·무료 사용량 → Live 모드</b>를 끄면 기본 방식으로 돌아갑니다.</td></tr>
     <tr><td><b>학생 링크</b>: 학생 PC 에서 안 열림</td><td>같은 네트워크인지, 방화벽을 허용했는지 확인하고 <b>학생 PC 링크</b>에서 포트를 바꿔 봅니다.</td></tr>

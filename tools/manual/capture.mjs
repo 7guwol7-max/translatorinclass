@@ -60,7 +60,7 @@ const BASE = {
   link: { enabled: false, urls: [], clients: 0, error: null },
   listening: false,
   displays: [
-    { id: 1, label: '화면 1 (주 모니터) · 1920×1080', primary: true },
+    { id: 1, label: '화면 1 (주 모니터) · 1920×1080 · 150%', primary: true },
     { id: 2, label: '화면 2 · 1920×1080', primary: false },
   ],
   devices: [
